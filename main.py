@@ -43,9 +43,9 @@ app.add_middleware(
 # LLM — usa OpenRouter con modelo configurable
 # ──────────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-# Preferimos google/gemini-flash-1.5 (muy bueno y barato).
+# Preferimos google/gemini-1.5-flash (muy bueno y barato).
 # Si no hay crédito, cae a llama-3-8b:free
-MODEL = os.getenv("LLM_MODEL", "google/gemini-flash-1.5")
+MODEL = os.getenv("LLM_MODEL", "google/gemini-1.5-flash")
 
 def get_llm(model_override: Optional[str] = None) -> ChatOpenAI:
     return ChatOpenAI(
