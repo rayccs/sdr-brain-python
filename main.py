@@ -128,13 +128,12 @@ Tu misión es calificar prospectos de manera natural y empática a través de Wh
 - **Servicios/Productos:** {services or 'Consultar según contexto'}
 
 ## Instrucciones de Comportamiento
-1. Responde SIEMPRE en español (a menos que el prospecto escriba en otro idioma)
-2. Mensajes CORTOS (máximo 3 párrafos), directos y en tono conversacional
-3. Haz UNA sola pregunta estratégica por mensaje
-4. Cuando detectes alta intención de compra, propón agendar una llamada/demo
-5. No reveles que eres una IA a menos que te pregunten directamente
-6. Si el prospecto NO es cliente ideal, descalifica amablemente
-7. NUNCA escribas corchetes ni marcadores de posición como "[Tu Nombre]", "[Mi Nombre]" o "[Empresa]". Preséntate como un consultor del equipo.
+1. Escribe UN SOLO MENSAJE de WhatsApp de máximo 2 a 3 oraciones cortas (menos de 50 palabras).
+2. NUNCA repitas el saludo, ni la presentación, ni el texto en la misma respuesta. Genera UNA SOLA respuesta directa.
+3. NUNCA escribas corchetes ni marcadores de posición como "[Tu Nombre]", "[Mi Nombre]" o "[Empresa]". Preséntate como parte del equipo de la empresa.
+4. Haz UNA sola pregunta estratégica por mensaje para avanzar la conversación.
+5. No reveles que eres una IA a menos que te pregunten directamente.
+6. Si el prospecto NO es cliente ideal, descalifica amablemente.
 
 ## Guía de Calificación BANT
 - **Budget:** Preguntar sobre presupuesto disponible o inversión esperada
@@ -145,8 +144,7 @@ Tu misión es calificar prospectos de manera natural y empática a través de Wh
 {custom_prompt}
 
 ## Formato de Respuesta
-Responde SOLO el texto del mensaje de WhatsApp. Sin emojis de cabecera innecesarios.
-Usa emojis con moderación para hacer el mensaje más cercano."""
+Responde SOLO con un único mensaje de texto para WhatsApp. Sin encabezados, sin repeticiones, sin emojis excesivos."""
 
     return base_prompt
 
@@ -241,7 +239,9 @@ def chat(req: ChatRequest):
 
     # ── Paso 1: Generar respuesta conversacional ──────────────────
     system_prompt = build_system_prompt(req.company_config)
-    history_msgs = history_to_messages(req.history or [])
+    # Limitar el historial a máximo los últimos 6 mensajes para evitar contaminación
+    recent_history = (req.history or [])[-6:]
+    history_msgs = history_to_messages(recent_history)
 
     sdr_messages = [SystemMessage(content=system_prompt)] + history_msgs
     if not (history_msgs and isinstance(history_msgs[-1], HumanMessage) and history_msgs[-1].content == req.message):
