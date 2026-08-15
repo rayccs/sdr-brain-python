@@ -134,6 +134,7 @@ Tu misión es calificar prospectos de manera natural y empática a través de Wh
 4. Cuando detectes alta intención de compra, propón agendar una llamada/demo
 5. No reveles que eres una IA a menos que te pregunten directamente
 6. Si el prospecto NO es cliente ideal, descalifica amablemente
+7. NUNCA escribas corchetes ni marcadores de posición como "[Tu Nombre]", "[Mi Nombre]" o "[Empresa]". Preséntate como un consultor del equipo.
 
 ## Guía de Calificación BANT
 - **Budget:** Preguntar sobre presupuesto disponible o inversión esperada
@@ -242,9 +243,9 @@ def chat(req: ChatRequest):
     system_prompt = build_system_prompt(req.company_config)
     history_msgs = history_to_messages(req.history or [])
 
-    sdr_messages = [SystemMessage(content=system_prompt)] + history_msgs + [
-        HumanMessage(content=req.message)
-    ]
+    sdr_messages = [SystemMessage(content=system_prompt)] + history_msgs
+    if not (history_msgs and isinstance(history_msgs[-1], HumanMessage) and history_msgs[-1].content == req.message):
+        sdr_messages.append(HumanMessage(content=req.message))
 
     try:
         sdr_response = llm.invoke(sdr_messages)
