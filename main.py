@@ -267,7 +267,8 @@ def chat(req: ChatRequest):
     classifier_messages = [SystemMessage(content=build_classifier_prompt())] + full_history
 
     try:
-        bant_response = llm.invoke(classifier_messages)
+        classifier_llm = get_llm().bind(response_format={"type": "json_object"})
+        bant_response = classifier_llm.invoke(classifier_messages)
         bant_data = parse_bant_json(bant_response.content)
     except Exception as e:
         logger.warning(f"Error clasificando lead: {e}")
