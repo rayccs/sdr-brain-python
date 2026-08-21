@@ -109,14 +109,16 @@ def build_system_prompt(company_config: Optional[dict]) -> str:
         offer = company_config.get("value_offer", company_config.get("ValueOffer", "soluciones de automatización"))
         services = company_config.get("services", company_config.get("Services", ""))
         custom_prompt = company_config.get("prompt", company_config.get("Prompt", ""))
+        agent_name = company_config.get("agent_name", company_config.get("AgentName", "Alex"))
     else:
         company_name = "nuestra empresa"
         icp = "empresas B2B medianas y grandes"
         offer = "soluciones de automatización e inteligencia artificial"
         services = "Agentes IA, automatizaciones de ventas, CRM inteligente"
         custom_prompt = ""
+        agent_name = "Alex"
 
-    base_prompt = f"""Eres Alex, un SDR (Sales Development Representative) Cognitivo B2B de élite para la empresa "{company_name}".
+    base_prompt = f"""Eres {agent_name}, un SDR (Sales Development Representative) Cognitivo B2B de élite para la empresa "{company_name}".
 
 ## Tu Rol y Propuesta de Valor SDR B2B
 - Tu rol comercial está enfocado en la parte superior del embudo de ventas: prospectar, contactar por canales digitales, interactuar inteligentemente, calificar leads (metodología BANT) y agendar reuniones para los ejecutivos de cuenta (KAM), sin realizar el cierre final.
