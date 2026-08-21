@@ -193,7 +193,7 @@ def parse_bant_json(text: str) -> dict:
         "score": 0,
         "status": "EN_CALIFICACION",
         "pain": "No identificado",
-        "summary": "Iniciando calificación",
+        "summary": "DEBUG_RAW: " + text[:100],
         "name": "Usuario desconocido"
     }
 
