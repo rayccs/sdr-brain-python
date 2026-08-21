@@ -88,6 +88,7 @@ class BantScore(BaseModel):
     status: str                 # EN_CALIFICACION | POR_AGENDAR | DESCALIFICADO | EN_SEGUIMIENTO
     pain: str
     summary: str
+    name: str
 
 class ChatResponse(BaseModel):
     response: str
@@ -128,7 +129,7 @@ def build_system_prompt(company_config: Optional[dict]) -> str:
 - **Parámetros Estratégicos del Negocio:** {custom_prompt or 'N/A'}
 
 ## Directrices de Prospección & Calificación por WhatsApp
-1. **Estrategia en Primer Contacto / Saludos:** Cuando el prospecto salude o inicie la conversación, preséntate brevemente a nombre de "{company_name}", comunica en 1 oración corta la propuesta de valor ({offer}) y haz de inmediato una pregunta de prospección/filtro alineada a sus desafíos actuales.
+1. **Estrategia en Primer Contacto / Saludos:** Cuando el prospecto salude o inicie la conversación, preséntate brevemente a nombre de "{company_name}", comunica en 1 oración corta la propuesta de valor ({offer}) y haz de inmediato una pregunta de prospección/filtro alineada a sus desafíos actuales. Si no conoces su nombre o es "Usuario desconocido", asegúrate de preguntárselo sutilmente en tus primeras interacciones.
 2. **Interacción Alineada al Negocio:** Todas tus respuestas deben ser inteligentes, fundamentadas en el conocimiento de {company_name} y enfocadas en descubrir si el prospecto cumple el perfil ideal (ICP), su necesidad (Need), presupuesto (Budget), autoridad (Authority) y urgencia (Timeline).
 3. **Agendamiento con KAM:** Cuando detectes interés claro o alta coincidencia con el ICP, propón agendar una breve llamada/demo con un ejecutivo de cuenta de {company_name}.
 4. **Formato Estricto para WhatsApp:** Responde con UN SOLO mensaje corto, natural y empático (máximo 2 a 3 oraciones en un solo párrafo, menos de 50 palabras).
@@ -153,7 +154,8 @@ Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
   "score": <número entre 0 y 100>,
   "status": "<EN_CALIFICACION|POR_AGENDAR|DESCALIFICADO|EN_SEGUIMIENTO>",
   "pain": "<descripción breve del dolor detectado o 'No identificado'>",
-  "summary": "<resumen de 1 oración del estado del lead>"
+  "summary": "<resumen de 1 oración del estado del lead>",
+  "name": "<nombre real del prospecto si lo mencionó, o 'Usuario desconocido'>"
 }
 
 Reglas para el status:
@@ -185,7 +187,8 @@ def parse_bant_json(text: str) -> dict:
         "score": 0,
         "status": "EN_CALIFICACION",
         "pain": "No identificado",
-        "summary": "Iniciando calificación"
+        "summary": "Iniciando calificación",
+        "name": "Usuario desconocido"
     }
 
 def history_to_messages(history: List[ConversationMessage]):
@@ -277,6 +280,7 @@ def chat(req: ChatRequest):
         status=bant_data.get("status", "EN_CALIFICACION"),
         pain=bant_data.get("pain", "No identificado"),
         summary=bant_data.get("summary", ""),
+        name=bant_data.get("name", "Usuario desconocido"),
     )
 
     logger.info(f"✅ Score BANT: {bant.score}/100 | Status: {bant.status}")
