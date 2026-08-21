@@ -155,7 +155,7 @@ Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
   "status": "<EN_CALIFICACION|POR_AGENDAR|DESCALIFICADO|EN_SEGUIMIENTO>",
   "pain": "<descripción breve del dolor detectado o 'No identificado'>",
   "summary": "<resumen de 1 oración del estado del lead>",
-  "name": "<nombre real del prospecto si lo mencionó, o 'Usuario desconocido'>"
+  "name": "<nombre del prospecto si lo dice explícitamente (ej: Jose), o 'Usuario desconocido'>"
 }
 
 Reglas para el status:
@@ -174,10 +174,16 @@ def parse_bant_json(text: str) -> dict:
         start = text.find("{")
         end = text.rfind("}") + 1
         if start != -1 and end > start:
+            json_str = text[start:end]
+            import re
+            json_str = re.sub(r',\s*}', '}', json_str)
+            json_str = re.sub(r',\s*\]', ']', json_str)
             try:
-                return json.loads(text[start:end])
+                return json.loads(json_str)
             except json.JSONDecodeError:
                 pass
+        
+        logger.error(f"Fallo al parsear BANT JSON. RAW TEXT: {text}")
     # Fallback
     return {
         "budget": "Por validar",
