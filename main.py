@@ -94,6 +94,10 @@ class BantScore(BaseModel):
     pain: str
     summary: str
     name: str
+    interest: Optional[str] = None
+    objections: Optional[str] = None
+    next_step: Optional[str] = None
+    strategy: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -154,9 +158,22 @@ Responde ÚNICAMENTE con el mensaje de texto directo para WhatsApp. Sin encabeza
 
     return base_prompt
 
-def build_classifier_prompt() -> str:
-    return """Eres un sistema de clasificación de leads B2B. 
-Analiza la conversación y devuelve un JSON con la evaluación BANT.
+def build_classifier_prompt(company_config: dict = None) -> str:
+    company_config = company_config or {}
+    company_name = company_config.get("name", company_config.get("Name", "Nuestra Empresa"))
+    offer = company_config.get("value_offer", company_config.get("ValueOffer", ""))
+    services = company_config.get("services", company_config.get("Services", ""))
+    custom_prompt = company_config.get("prompt", company_config.get("Prompt", ""))
+
+    return f"""Eres el sistema de clasificación de leads del SDR de {company_name}.
+Tu objetivo es extraer el contexto de la conversación, analizando las respuestas del prospecto y alineándolas con lo que {company_name} ofrece.
+
+Contexto del Negocio ({company_name}):
+- Propuesta de Valor: {offer}
+- Servicios / Productos: {services}
+- Reglas / Foco: {custom_prompt}
+
+Analiza la conversación y devuelve un JSON con la evaluación BANT y contexto.
 
 Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
 {
@@ -167,8 +184,11 @@ Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
   "score": <número entre 0 y 100>,
   "status": "<EN_CALIFICACION|POR_AGENDAR|DESCALIFICADO|EN_SEGUIMIENTO>",
   "pain": "<descripción breve del dolor detectado o 'No identificado'>",
-  "summary": "<resumen de 1 oración del estado del lead>",
-  "name": "<nombre del prospecto si lo dice explícitamente (ej: Jose), o 'Usuario desconocido'>"
+  "name": "<nombre del prospecto si lo dice explícitamente (ej: Jose), o 'Usuario desconocido'>",
+  "interest": "<qué le interesa realmente basado en la conversación y tu propuesta de valor>",
+  "objections": "<objeciones o dudas que tenga, o 'Ninguna aún'>",
+  "next_step": "<cuál es la siguiente acción lógica que tomará la IA>",
+  "strategy": "<estrategia actual que usas, ej: Empatizando, Calificando BANT, Rebatiendo>"
 }
 
 Reglas para el status:
@@ -277,7 +297,7 @@ def chat(req: ChatRequest):
         AIMessage(content=response_text),
     ]
 
-    classifier_messages = [SystemMessage(content=build_classifier_prompt())] + full_history
+    classifier_messages = [SystemMessage(content=build_classifier_prompt(req.company_config))] + full_history
 
     try:
         classifier_llm = get_llm().bind(response_format={"type": "json_object"})
@@ -301,6 +321,10 @@ def chat(req: ChatRequest):
         pain=bant_data.get("pain", "No identificado"),
         summary=bant_data.get("summary", ""),
         name=bant_data.get("name", "Usuario desconocido"),
+        interest=bant_data.get("interest", "Analizando interés inicial"),
+        objections=bant_data.get("objections", "Ninguna"),
+        next_step=bant_data.get("next_step", "Esperando respuesta"),
+        strategy=bant_data.get("strategy", "Exploración"),
     )
 
     logger.info(f"✅ Score BANT: {bant.score}/100 | Status: {bant.status}")
@@ -323,7 +347,7 @@ def classify_lead(req: ClassifyRequest):
     llm = get_llm()
     history_msgs = history_to_messages(req.history)
 
-    classifier_messages = [SystemMessage(content=build_classifier_prompt())] + history_msgs
+    classifier_messages = [SystemMessage(content=build_classifier_prompt(req.company_config))] + history_msgs
 
     try:
         response = llm.invoke(classifier_messages)
