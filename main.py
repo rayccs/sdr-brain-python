@@ -10,17 +10,22 @@ Responsabilidades:
 """
 
 import os
+import io
 import json
+import base64
 import logging
 from typing import Optional, List
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+import PyPDF2
+from docx import Document
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -110,6 +115,7 @@ def build_system_prompt(company_config: Optional[dict]) -> str:
         services = company_config.get("services", company_config.get("Services", ""))
         custom_prompt = company_config.get("prompt", company_config.get("Prompt", ""))
         agent_name = company_config.get("agent_name", company_config.get("AgentName", "Alex"))
+        knowledge_base = company_config.get("knowledge_base", company_config.get("KnowledgeBase", ""))
     else:
         company_name = "nuestra empresa"
         icp = "empresas B2B medianas y grandes"
@@ -117,12 +123,17 @@ def build_system_prompt(company_config: Optional[dict]) -> str:
         services = "Agentes IA, automatizaciones de ventas, CRM inteligente"
         custom_prompt = ""
         agent_name = "Alex"
+        knowledge_base = ""
+        
+    kb_section = ""
+    if knowledge_base:
+        kb_section = f"\n\n## BASE DE CONOCIMIENTO EXTRAÍDA DE DOCUMENTOS:\nUsa esta información técnica y comercial para responder preguntas detalladas sobre los servicios/productos de {company_name}:\n{knowledge_base}\n\n"
 
     base_prompt = f"""Eres {agent_name}, un SDR (Sales Development Representative) Cognitivo B2B de élite para la empresa "{company_name}".
 
 ## Tu Rol y Propuesta de Valor SDR B2B
 - Tu rol comercial está enfocado en la parte superior del embudo de ventas: prospectar, contactar por canales digitales, interactuar inteligentemente, calificar leads (metodología BANT) y agendar reuniones para los ejecutivos de cuenta (KAM), sin realizar el cierre final.
-- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Cerebro de Ventas configurado.
+- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Cerebro de Ventas configurado.{kb_section}
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
 - **Cliente Ideal (ICP):** {icp}
@@ -321,3 +332,49 @@ def classify_lead(req: ClassifyRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     return bant_data
+
+@app.post("/extract")
+async def extract_file_content(file: UploadFile = File(...)):
+    content = await file.read()
+    filename = file.filename.lower()
+    
+    extracted_text = ""
+    try:
+        if filename.endswith(".txt") or filename.endswith(".csv"):
+            extracted_text = content.decode("utf-8", errors="ignore")
+            
+        elif filename.endswith(".pdf"):
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+            extracted_text = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
+            
+        elif filename.endswith(".docx"):
+            doc = Document(io.BytesIO(content))
+            extracted_text = "\n".join([para.text for para in doc.paragraphs])
+            
+        elif filename.endswith(".png") or filename.endswith(".jpg") or filename.endswith(".jpeg"):
+            base64_img = base64.b64encode(content).decode("utf-8")
+            mime_type = file.content_type or "image/png"
+            
+            vision_llm = ChatOpenAI(
+                model=MODEL,
+                openai_api_key=OPENROUTER_API_KEY,
+                openai_api_base="https://openrouter.ai/api/v1",
+                max_tokens=1500,
+            )
+            msg = HumanMessage(
+                content=[
+                    {"type": "text", "text": "Extrae detalladamente todo el texto, datos técnicos, tablas, listas de precios y parámetros comerciales de esta imagen. Formatea la salida como texto estructurado claro."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_img}"}}
+                ]
+            )
+            resp = vision_llm.invoke([msg])
+            extracted_text = resp.content
+            
+        else:
+            raise HTTPException(status_code=400, detail="Formato de archivo no soportado. Usa PDF, DOCX, TXT, CSV o PNG/JPG.")
+            
+    except Exception as e:
+        logger.error(f"Error procesando {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
+        
+    return {"text": extracted_text}
