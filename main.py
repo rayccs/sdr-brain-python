@@ -104,6 +104,17 @@ class ChatResponse(BaseModel):
     bant: BantScore
     model_used: str
 
+class NexusChatRequest(BaseModel):
+    query: str
+    company_config: Optional[dict] = None
+    leads_summary: Optional[List[dict]] = []
+
+class NexusChatResponse(BaseModel):
+    action: str
+    detail: str
+    suggestion: str
+    color: str
+
 # ──────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────
@@ -402,3 +413,59 @@ async def extract_file_content(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
         
     return {"text": extracted_text}
+
+@app.post("/nexus-chat", response_model=NexusChatResponse)
+def nexus_chat(req: NexusChatRequest):
+    """
+    Cerebro Cognitivo Principal - Endpoint de Command Center
+    """
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY no configurada")
+
+    llm = get_llm().bind(response_format={"type": "json_object"})
+
+    company_config = req.company_config or {}
+    company_name = company_config.get("name", company_config.get("Name", "Nuestra Empresa"))
+    offer = company_config.get("value_offer", company_config.get("ValueOffer", "N/A"))
+    
+    leads_context = json.dumps(req.leads_summary[:50]) # limit context
+
+    system_prompt = f"""Eres el Cerebro Cognitivo Principal (Nexus) del Command Center de {company_name}.
+Eres un orquestador de IA avanzado que analiza el tráfico de leads en tiempo real y la configuración del negocio para dar respuestas estratégicas de alto nivel directivas.
+
+Contexto del Negocio:
+- Empresa: {company_name}
+- Oferta/Valor: {offer}
+- Leads Actuales (Resumen): {leads_context}
+
+El usuario ha ejecutado un comando o te ha hecho una pregunta. Analiza los datos de los leads, la situación, y responde con una acción estratégica.
+Responde ÚNICAMENTE con un JSON con el siguiente formato:
+{{
+  "action": "<TÍTULO DE LA ACCIÓN EN MAYÚSCULAS> (ej: ANÁLISIS DE ROI EJECUTADO: ...)",
+  "detail": "<Detalle analítico basado en los leads y negocio (ej: Se detectan 3 leads descartados y 2 agendados...)>",
+  "suggestion": "<Una recomendación o siguiente paso accionable>",
+  "color": "<código hex de color asociado al sentimiento de la acción, ej: #10b981 (éxito), #f59e0b (alerta), #666cff (informativo)>"
+}}"""
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=req.query)
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        data = json.loads(response.content)
+        return NexusChatResponse(
+            action=data.get("action", "COMANDO PROCESADO"),
+            detail=data.get("detail", "Análisis completado."),
+            suggestion=data.get("suggestion", "N/A"),
+            color=data.get("color", "#666cff")
+        )
+    except Exception as e:
+        logger.error(f"Error en nexus-chat: {e}")
+        return NexusChatResponse(
+            action="ERROR COGNITIVO",
+            detail=f"Fallo en la inferencia del orquestador: {str(e)}",
+            suggestion="Revisar logs del sistema.",
+            color="#ef4444"
+        )
