@@ -300,7 +300,7 @@ def chat(req: ChatRequest):
         response_text = sdr_response.content
     except Exception as e:
         logger.error(f"Error generando respuesta SDR: {e}")
-        raise HTTPException(status_code=500, detail=f"Error del LLM: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error del LLM: {str(e)}")
 
     # ── Paso 2: Clasificar el lead con el historial completo ──────
     full_history = history_to_messages(req.history or []) + [
@@ -383,7 +383,7 @@ def classify_lead(req: ClassifyRequest):
         response = llm.invoke(classifier_messages)
         bant_data = parse_bant_json(response.content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
     return bant_data
 
