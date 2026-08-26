@@ -322,21 +322,40 @@ def chat(req: ChatRequest):
             "pain": "No identificado", "summary": "Error de clasificación"
         }
 
-    bant = BantScore(
-        budget=bant_data.get("budget", "Por validar"),
-        authority=bant_data.get("authority", "Media"),
-        need=bant_data.get("need", "Por explorar"),
-        timeline=bant_data.get("timeline", "Sin urgencia"),
-        score=int(bant_data.get("score", 0)),
-        status=bant_data.get("status", "EN_CALIFICACION"),
-        pain=bant_data.get("pain", "No identificado"),
-        summary=bant_data.get("summary", ""),
-        name=bant_data.get("name", "Usuario desconocido"),
-        interest=bant_data.get("interest", "Analizando interés inicial"),
-        objections=bant_data.get("objections", "Ninguna"),
-        next_step=bant_data.get("next_step", "Esperando respuesta"),
-        strategy=bant_data.get("strategy", "Exploración"),
-    )
+    # Protección robusta para el score
+    raw_score = bant_data.get("score")
+    if raw_score is None:
+        safe_score = 0
+    else:
+        try:
+            safe_score = int(raw_score)
+        except (ValueError, TypeError):
+            safe_score = 0
+
+    try:
+        bant = BantScore(
+            budget=str(bant_data.get("budget") or "Por validar"),
+            authority=str(bant_data.get("authority") or "Media"),
+            need=str(bant_data.get("need") or "Por explorar"),
+            timeline=str(bant_data.get("timeline") or "Sin urgencia"),
+            score=safe_score,
+            status=str(bant_data.get("status") or "EN_CALIFICACION"),
+            pain=str(bant_data.get("pain") or "No identificado"),
+            summary=str(bant_data.get("summary") or ""),
+            name=str(bant_data.get("name") or "Usuario desconocido"),
+            interest=str(bant_data.get("interest") or "Analizando interés inicial"),
+            objections=str(bant_data.get("objections") or "Ninguna"),
+            next_step=str(bant_data.get("next_step") or "Esperando respuesta"),
+            strategy=str(bant_data.get("strategy") or "Exploración"),
+        )
+    except Exception as e:
+        logger.error(f"Error construyendo BantScore: {e}")
+        # Fallback extremo seguro
+        bant = BantScore(
+            budget="Por validar", authority="Media", need="Por explorar", 
+            timeline="Sin urgencia", score=0, status="EN_CALIFICACION", 
+            pain="No identificado", summary="Error fatal", name="Usuario"
+        )
 
     logger.info(f"✅ Score BANT: {bant.score}/100 | Status: {bant.status}")
 
