@@ -207,7 +207,7 @@ Contexto del Negocio ({company_name}):
 Analiza la conversación y devuelve un JSON con la evaluación BANT y contexto.
 
 Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
-{
+{{
   "budget": "Confirmado|No confirmado|Por validar",
   "authority": "Alta|Media|Baja",
   "need": "Identificada|Por explorar|Sin necesidad",
@@ -220,7 +220,7 @@ Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
   "objections": "<objeciones o dudas que tenga, o 'Ninguna aún'>",
   "next_step": "<cuál es la siguiente acción lógica que tomará la IA>",
   "strategy": "<estrategia actual que usas, ej: Empatizando, Calificando BANT, Rebatiendo>"
-}
+}}
 
 Reglas para el status:
 - POR_AGENDAR: score >= 70, intención de reunión clara
