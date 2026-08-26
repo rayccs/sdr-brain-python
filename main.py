@@ -44,6 +44,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global Exception: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": f"Unhandled Exception: {str(exc)}"}
+    )
+
+@app.exception_handler(ResponseValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"Response Validation Error: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": f"Response Validation Error: {str(exc)}"}
+    )
+
+
 # ──────────────────────────────────────────────────────────────────
 # LLM — usa OpenRouter con modelo configurable
 # ──────────────────────────────────────────────────────────────────
