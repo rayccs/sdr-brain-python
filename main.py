@@ -135,6 +135,23 @@ class NexusChatResponse(BaseModel):
     suggestion: str
     color: str
 
+class HandoffAnalysisRequest(BaseModel):
+    history: List[ConversationMessage]
+    lead_phone: Optional[str] = None
+    lead_name: Optional[str] = None
+    company_config: Optional[dict] = None
+
+class HandoffAnalysisResponse(BaseModel):
+    bant_interest: str
+    bant_budget: str
+    bant_authority: str
+    bant_need: str
+    bant_timeline: str
+    sentiment: str
+    brief: str
+    recommended_action: str
+    model_used: str
+
 # ──────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────
@@ -407,6 +424,70 @@ def classify_lead(req: ClassifyRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     return bant_data
+
+@app.post("/analyze_handoff")
+def analyze_handoff(req: HandoffAnalysisRequest):
+    """
+    Analiza un historial de conversación para generar un Brief y BANT detallado
+    al momento de hacer handoff a un ejecutivo humano.
+    """
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY no configurada")
+
+    llm = get_llm()
+    history_msgs = history_to_messages(req.history)
+
+    prompt = f"""Eres el SDR Cognitivo B2B. Estás transfiriendo este lead ({req.lead_name or 'Desconocido'}, Tel: {req.lead_phone or 'Desconocido'}) a un ejecutivo de ventas humano (Key Account Manager).
+Analiza el historial de conversación adjunto y extrae la siguiente información estructurada en formato JSON estricto:
+
+{{
+  "bant_interest": "Resumen del interés (ej. Interés alto en servicio X)",
+  "bant_budget": "Estado del presupuesto (ej. No mencionado, Validado, etc.)",
+  "bant_authority": "Autoridad del contacto (ej. Tomador de decisión, Influenciador, Desconocido)",
+  "bant_need": "Dolor o necesidad principal (ej. Necesita automatizar ventas)",
+  "bant_timeline": "Tiempo esperado (ej. Urgente, Corto plazo, Largo plazo)",
+  "sentiment": "Positivo, Neutro o Negativo",
+  "brief": "Un resumen ejecutivo de 2 o 3 líneas con el contexto principal de la conversación para que el KAM lo lea rápido.",
+  "recommended_action": "Sugerencia táctica de 1 línea para el KAM sobre cómo abordar este lead."
+}}
+
+Devuelve ÚNICAMENTE el JSON válido, sin formato markdown, sin bloques de código ```json.
+"""
+    messages = [SystemMessage(content=prompt)] + history_msgs
+
+    try:
+        response = llm.invoke(messages)
+        content = response.content
+        if "```json" in content:
+            content = content.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(content)
+        
+        return HandoffAnalysisResponse(
+            bant_interest=data.get("bant_interest", "No identificado"),
+            bant_budget=data.get("bant_budget", "Por validar"),
+            bant_authority=data.get("bant_authority", "Desconocida"),
+            bant_need=data.get("bant_need", "No identificada"),
+            bant_timeline=data.get("bant_timeline", "Por definir"),
+            sentiment=data.get("sentiment", "Neutro"),
+            brief=data.get("brief", "No se pudo generar el resumen."),
+            recommended_action=data.get("recommended_action", "Inicia contacto consultivo."),
+            model_used=MODEL
+        )
+    except Exception as e:
+        logger.error(f"Error en analyze_handoff: {e}")
+        # Retornar un fallback
+        return HandoffAnalysisResponse(
+            bant_interest="Error al analizar",
+            bant_budget="Por validar",
+            bant_authority="Desconocida",
+            bant_need="Desconocida",
+            bant_timeline="Desconocido",
+            sentiment="Neutro",
+            brief="Error al extraer el contexto.",
+            recommended_action="Revisar transcripción manualmente.",
+            model_used=MODEL
+        )
 
 @app.post("/extract")
 async def extract_file_content(file: UploadFile = File(...)):
