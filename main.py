@@ -71,7 +71,7 @@ async def validation_exception_handler(request, exc):
 # ──────────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Preferimos anthropic/claude-3.5-sonnet por ser el mejor modelo lógico/comercial en OpenRouter
-MODEL = os.getenv("LLM_MODEL", "anthropic/claude-3.5-sonnet")
+MODEL = os.getenv("LLM_MODEL", "anthropic/claude-sonnet-latest")
 
 def get_llm(model_override: Optional[str] = None) -> ChatOpenAI:
     return ChatOpenAI(
