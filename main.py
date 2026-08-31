@@ -14,6 +14,8 @@ import io
 import json
 import base64
 import logging
+import re
+from collections import Counter
 from typing import Optional, List
 from datetime import datetime
 
@@ -152,9 +154,56 @@ class HandoffAnalysisResponse(BaseModel):
     model_used: str
 
 # ──────────────────────────────────────────────────────────────────
+# Lightweight In-Memory RAG
+# ──────────────────────────────────────────────────────────────────
+def chunk_text(text: str, chunk_size: int = 1500) -> List[str]:
+    """Divide el texto en párrafos para el RAG."""
+    paragraphs = text.split('\n\n')
+    chunks = []
+    current_chunk = ""
+    for p in paragraphs:
+        if len(current_chunk) + len(p) > chunk_size:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = p + "\n\n"
+        else:
+            current_chunk += p + "\n\n"
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    return chunks
+
+def retrieve_relevant_chunks(query: str, text: str, top_k: int = 3) -> str:
+    """Extrae los N fragmentos más relevantes del knowledge base según el query."""
+    if not text or len(text) < 4000:
+        return text # Si el texto es pequeño, devolver completo
+        
+    chunks = chunk_text(text)
+    # Extracción simple de palabras (minúsculas, alfanumérico)
+    query_words = set(re.findall(r'\w+', query.lower()))
+    if not query_words:
+        # Si el query no tiene palabras, devolver los primeros fragmentos
+        return "\n\n...\n\n".join(chunks[:top_k])
+    
+    scored_chunks = []
+    for chunk in chunks:
+        chunk_words = re.findall(r'\w+', chunk.lower())
+        word_counts = Counter(chunk_words)
+        # Score = suma de la frecuencia de las palabras del query en el chunk
+        score = sum(word_counts[w] for w in query_words)
+        scored_chunks.append((score, chunk))
+        
+    # Ordenar por score descendente
+    scored_chunks.sort(key=lambda x: x[0], reverse=True)
+    
+    # Devolver los top_k chunks unidos
+    top_chunks = [c for score, c in scored_chunks[:top_k]]
+    return "\n\n[...]\n\n".join(top_chunks)
+
+
+# ──────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────
-def build_system_prompt(company_config: Optional[dict]) -> str:
+def build_system_prompt(company_config: Optional[dict], user_query: str = "") -> str:
     """
     Construye el system prompt del agente SDR basado en la configuración
     de la empresa cliente. Si no hay config, usa valores genéricos.
@@ -178,7 +227,8 @@ def build_system_prompt(company_config: Optional[dict]) -> str:
         
     kb_section = ""
     if knowledge_base:
-        kb_section = f"\n\n## BASE DE CONOCIMIENTO EXTRAÍDA DE DOCUMENTOS:\nUsa esta información técnica y comercial para responder preguntas detalladas sobre los servicios/productos de {company_name}:\n{knowledge_base}\n\n"
+        relevant_kb = retrieve_relevant_chunks(user_query, knowledge_base)
+        kb_section = f"\n\n## BASE DE CONOCIMIENTO EXTRAÍDA DE DOCUMENTOS:\nUsa esta información técnica y comercial para responder preguntas detalladas sobre los servicios/productos de {company_name}. Esta es información filtrada según lo que preguntó el cliente:\n{relevant_kb}\n\n"
 
     base_prompt = f"""Eres {agent_name}, un asesor comercial humano altamente capacitado para la empresa "{company_name}". 
 IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido o respuestas vagas). Usa RAG estrictamente basado en tu Base de Conocimiento.
@@ -325,7 +375,7 @@ def chat(req: ChatRequest):
     llm = get_llm()
 
     # ── Paso 1: Generar respuesta conversacional ──────────────────
-    system_prompt = build_system_prompt(req.company_config)
+    system_prompt = build_system_prompt(req.company_config, req.message)
     # Limitar el historial a máximo los últimos 6 mensajes para evitar contaminación
     recent_history = (req.history or [])[-6:]
     history_msgs = history_to_messages(recent_history)
