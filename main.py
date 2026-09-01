@@ -397,7 +397,9 @@ def chat(req: ChatRequest):
         AIMessage(content=response_text),
     ]
 
-    classifier_messages = [SystemMessage(content=build_classifier_prompt(req.company_config))] + full_history
+    classifier_messages = [SystemMessage(content=build_classifier_prompt(req.company_config))] + full_history + [
+        HumanMessage(content="Clasifica el lead ahora basado en esta conversación y entrega el JSON solicitado.")
+    ]
 
     try:
         classifier_llm = get_llm().bind(response_format={"type": "json_object"})
