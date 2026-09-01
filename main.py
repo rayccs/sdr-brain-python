@@ -517,8 +517,9 @@ Devuelve ÚNICAMENTE el JSON válido, sin formato markdown, sin bloques de códi
     try:
         response = llm.invoke(messages)
         content = response.content
-        if "```json" in content:
-            content = content.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            content = match.group(0)
         
         data = json.loads(content)
         
