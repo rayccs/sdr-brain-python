@@ -300,8 +300,7 @@ Responde ÚNICAMENTE con este JSON (sin markdown, sin explicaciones):
 Reglas para el status:
 - POR_AGENDAR: score >= 70, intención de reunión clara
 - DESCALIFICADO: score < 30, prospecto no cumple ICP, o habla de temas off-topic/irrelevantes
-- EN_SEGUIMIENTO: score 30-69, interesado pero no listo
-- EN_CALIFICACION: conversación muy nueva, aún no hay suficiente info"""
+- "status": Debe ser EXACTAMENTE uno de estos: "EN_CALIFICACION" (Lead activo conversando pero no convencido aún, usa este estado SIEMPRE que estés en una conversación activa), "POR_AGENDAR" (El lead quiere que lo contacten o quiere agendar), "HANDOFF" (Has ejecutado el handoff y ya no debes hablar más), "DESCALIFICADO" (Lead no sirve o pide dejar de hablar). "EN_SEGUIMIENTO" (SOLO usa este estado si el lead te dejó de responder por mucho tiempo y la conversación se enfrió)."""
 
 def parse_bant_json(text: str) -> dict:
     """Extrae el JSON de BANT del texto del LLM, tolerante a errores."""
