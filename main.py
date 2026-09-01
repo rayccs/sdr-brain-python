@@ -226,8 +226,14 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "") ->
         knowledge_base = ""
         
     kb_section = ""
+    resources_section = ""
     if knowledge_base:
-        relevant_kb = retrieve_relevant_chunks(user_query, knowledge_base)
+        parts = knowledge_base.split("## RECURSOS PARA COMPARTIR CON EL LEAD (Catálogos, Links):")
+        base_kb = parts[0]
+        if len(parts) > 1:
+            resources_section = "\n\n## RECURSOS PARA COMPARTIR CON EL LEAD (Catálogos, Links):" + parts[1]
+            
+        relevant_kb = retrieve_relevant_chunks(user_query, base_kb)
         kb_section = f"\n\n## BASE DE CONOCIMIENTO EXTRAÍDA DE DOCUMENTOS:\nUsa esta información técnica y comercial para responder preguntas detalladas sobre los servicios/productos de {company_name}. Esta es información filtrada según lo que preguntó el cliente:\n{relevant_kb}\n\n"
 
     base_prompt = f"""Eres {agent_name}, un asesor comercial humano altamente capacitado para la empresa "{company_name}". 
@@ -235,7 +241,7 @@ IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comór
 
 ## Tu Rol y Propuesta de Valor Comercial B2B
 - Tu rol comercial está enfocado en prospectar, contactar, interactuar inteligentemente, calificar leads (metodología BANT) y agendar reuniones para los ejecutivos de cuenta, sin realizar el cierre final.
-- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}
+- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
 - **Cliente Ideal (ICP):** {icp}
