@@ -370,54 +370,44 @@ def health_check():
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     """
-    Endpoint principal que N8N llama cuando llega un mensaje de WhatsApp.
-    Genera la respuesta del SDR Y clasifica el lead en el mismo ciclo.
+    Endpoint principal que usa el Grafo Cognitivo (LangGraph).
+    Genera la respuesta del SDR Y clasifica el lead de forma autónoma.
     """
-    logger.info(f"📩 Nuevo mensaje de {req.lead_phone or 'desconocido'}: {req.message[:60]}...")
+    logger.info(f"📩 Nuevo mensaje de {req.lead_phone or 'desconocido'} para LangGraph: {req.message[:60]}...")
 
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY no configurada")
 
-    llm = get_llm()
+    # Evitamos import circular cargando el grafo aquí
+    from graph import sdr_graph
 
-    # ── Paso 1: Generar respuesta conversacional ──────────────────
-    system_prompt = build_system_prompt(req.company_config, req.message)
-    # Limitar el historial a máximo los últimos 6 mensajes para evitar contaminación
+    # Preparar el estado inicial
     recent_history = (req.history or [])[-6:]
     history_msgs = history_to_messages(recent_history)
-
-    sdr_messages = [SystemMessage(content=system_prompt)] + history_msgs
+    
+    # Asegurar que el último mensaje no esté duplicado
     if not (history_msgs and isinstance(history_msgs[-1], HumanMessage) and history_msgs[-1].content == req.message):
-        sdr_messages.append(HumanMessage(content=req.message))
+        history_msgs.append(HumanMessage(content=req.message))
+
+    initial_state = {
+        "messages": history_msgs,
+        "company_config": req.company_config,
+        "user_message": req.message,
+        "bant_data": {}
+    }
 
     try:
-        sdr_response = llm.invoke(sdr_messages)
-        response_text = sdr_response.content
+        # ── Ejecución del Grafo de Estado ──
+        final_state = sdr_graph.invoke(initial_state)
+        
+        # Extraer resultados
+        # La respuesta es el último mensaje en la lista (AIMessage) generado por generate_reply_node
+        response_text = final_state["messages"][-1].content
+        bant_data = final_state["bant_data"]
     except Exception as e:
-        logger.error(f"Error generando respuesta SDR: {e}")
-        raise HTTPException(status_code=400, detail=f"Error del LLM: {str(e)}")
-
-    # ── Paso 2: Clasificar el lead con el historial completo ──────
-    full_history = history_to_messages(req.history or []) + [
-        HumanMessage(content=req.message),
-        AIMessage(content=response_text),
-    ]
-
-    classifier_messages = [SystemMessage(content=build_classifier_prompt(req.company_config))] + full_history + [
-        HumanMessage(content="Clasifica el lead ahora basado en esta conversación y entrega el JSON solicitado.")
-    ]
-
-    try:
-        classifier_llm = get_llm().bind(response_format={"type": "json_object"})
-        bant_response = classifier_llm.invoke(classifier_messages)
-        bant_data = parse_bant_json(bant_response.content)
-    except Exception as e:
-        logger.warning(f"Error clasificando lead: {e}")
-        bant_data = {
-            "budget": "Por validar", "authority": "Media", "need": "Por explorar",
-            "timeline": "Sin urgencia", "score": 10, "status": "EN_CALIFICACION",
-            "pain": "No identificado", "summary": "Error de clasificación"
-        }
+        logger.error(f"Error crítico en LangGraph: {e}")
+        response_text = "Actualmente estoy presentando fallas técnicas, por favor aguarda un momento."
+        bant_data = {}
 
     # Protección robusta para el score
     raw_score = bant_data.get("score")
@@ -446,15 +436,14 @@ def chat(req: ChatRequest):
             strategy=str(bant_data.get("strategy") or "Exploración"),
         )
     except Exception as e:
-        logger.error(f"Error construyendo BantScore: {e}")
-        # Fallback extremo seguro
+        logger.error(f"Error construyendo BantScore desde Grafo: {e}")
         bant = BantScore(
             budget="Por validar", authority="Media", need="Por explorar", 
             timeline="Sin urgencia", score=0, status="EN_CALIFICACION", 
             pain="No identificado", summary="Error fatal", name="Usuario"
         )
 
-    logger.info(f"✅ Score BANT: {bant.score}/100 | Status: {bant.status}")
+    logger.info(f"✅ Score BANT [Graph]: {bant.score}/100 | Status: {bant.status}")
 
     return ChatResponse(
         response=response_text,
