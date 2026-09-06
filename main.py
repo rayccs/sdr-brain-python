@@ -70,8 +70,8 @@ async def validation_exception_handler(request, exc):
 # LLM — usa OpenRouter con modelo configurable
 # ──────────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-# Preferimos anthropic/claude-3.5-sonnet por ser el mejor modelo lógico/comercial en OpenRouter
-MODEL = os.getenv("LLM_MODEL", "anthropic/claude-sonnet-5")
+# Usamos Claude 3 Opus por defecto para máxima capacidad cognitiva en el agente SDR
+MODEL = os.getenv("LLM_MODEL", "anthropic/claude-3-opus")
 
 def get_llm(model_override: Optional[str] = None) -> ChatOpenAI:
     return ChatOpenAI(
