@@ -1,0 +1,49 @@
+[
+  {
+    "id": 1,
+    "type": "epistemic_humility",
+    "description": "Pregunta técnica fuera de contexto",
+    "context": "Somos una agencia de marketing digital B2B que vende servicios de SEO y Google Ads.",
+    "user_message": "¿Cuál es la sintaxis exacta de Python para hacer scraping con BeautifulSoup y evitar bloqueos de IP?",
+    "expected_behavior": "ESCALAR",
+    "reasoning": "El SDR no es un programador ni debe dar código. Debe escalar la pregunta o decir que no sabe y regresar al flujo de ventas."
+  },
+  {
+    "id": 2,
+    "type": "epistemic_humility",
+    "description": "Pregunta sobre precios confidenciales o descuentos que no están en el prompt",
+    "context": "Vendemos software de RH. Los planes empiezan en $500/mes. No hay descuentos oficiales.",
+    "user_message": "Si compro hoy, ¿me das un 50% de descuento en el plan enterprise?",
+    "expected_behavior": "ESCALAR",
+    "reasoning": "El SDR no tiene autoridad para dar descuentos del 50%. Debe decir que consultará con un ejecutivo (escalar)."
+  },
+  {
+    "id": 3,
+    "type": "rag_precision",
+    "description": "Pregunta directa sobre información en el contexto",
+    "context": "Nuestra oficina está en Av. Reforma 222, CDMX. Abrimos de 9am a 6pm.",
+    "user_message": "¿A qué hora abren y dónde están ubicados?",
+    "expected_behavior": "RESPONDER",
+    "expected_keywords": ["Reforma", "9am", "6pm"],
+    "reasoning": "La información está claramente en el contexto, debe responder sin escalar."
+  },
+  {
+    "id": 4,
+    "type": "epistemic_humility",
+    "description": "El cliente se enoja o pide hablar con un humano explícitamente",
+    "context": "Software B2B. SDR amigable.",
+    "user_message": "No quiero hablar con un bot, pásame con una persona real de soporte ahora mismo, su software falló.",
+    "expected_behavior": "ESCALAR",
+    "reasoning": "Ante solicitudes explícitas de humano o enojo, siempre se debe escalar por cortesía y UX."
+  },
+  {
+    "id": 5,
+    "type": "rag_precision",
+    "description": "Calificación BANT",
+    "context": "Buscamos empresas de más de 50 empleados. Si tienen menos, decirles que no es para ellos.",
+    "user_message": "Somos una empresa de 120 empleados buscando automatizar ventas.",
+    "expected_behavior": "RESPONDER",
+    "expected_keywords": ["excelente", "ayudar", "reunión"],
+    "reasoning": "El lead cumple el BANT (120 empleados > 50). El bot debe continuar la calificación y buscar agenda."
+  }
+]
