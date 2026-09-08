@@ -123,6 +123,7 @@ class BantScore(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     bant: BantScore
+    apollo_insights: Optional[str] = None
     model_used: str
 
 class NexusChatRequest(BaseModel):
@@ -236,13 +237,22 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "") ->
         relevant_kb = retrieve_relevant_chunks(user_query, base_kb)
         kb_section = f"\n\n## BASE DE CONOCIMIENTO EXTRAÍDA DE DOCUMENTOS:\nUsa esta información técnica y comercial para responder preguntas detalladas sobre los servicios/productos de {company_name}. Esta es información filtrada según lo que preguntó el cliente:\n{relevant_kb}\n\n"
 
+    apollo_enabled = company_config.get("apollo_enabled", False)
+    apollo_insights = company_config.get("apollo_insights", "")
+
+    apollo_section = ""
+    if apollo_enabled and not apollo_insights:
+        apollo_section = "\n- **Misión de Enriquecimiento (Apollo):** Aún no tenemos el correo corporativo del prospecto. Pídeselo de manera MUY natural y sutil en tu respuesta (ej. para enviarle un catálogo, registrarlo en el sistema o validar su perfil corporativo). Solo hazlo si la conversación se presta para ello."
+    elif apollo_insights:
+        apollo_section = f"\n- **Datos Extraídos (Inteligencia Comercial):** {apollo_insights} -> Usa esta información sutilmente para hiper-personalizar tu respuesta y empatizar con el cargo del cliente."
+
     base_prompt = f"""Eres {agent_name}, un asesor comercial humano altamente capacitado para la empresa "{company_name}". 
 IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido o respuestas vagas). Usa RAG estrictamente basado en tu Base de Conocimiento.
 
 ## Tu Rol y Propuesta de Valor Comercial B2B
 - Tu rol comercial está enfocado en prospectar, contactar, interactuar inteligentemente, calificar leads (metodología BANT) y avanzar hacia el cierre de la venta. 
 - NUNCA le pidas al cliente que escriba a otro número de teléfono o WhatsApp (incluso si lo ves en tu base de conocimiento). Tú eres el canal oficial y único de comunicación. Si necesitas apoyo de un humano, simplemente despídete o indica que confirmarás la solicitud por este mismo medio, pero NO desvíes al lead.
-- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}
+- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
 - **Cliente Ideal (ICP):** {icp}
@@ -403,11 +413,13 @@ def chat(req: ChatRequest):
         # Extraer resultados
         # La respuesta es el último mensaje en la lista (AIMessage) generado por generate_reply_node
         response_text = final_state["messages"][-1].content
-        bant_data = final_state["bant_data"]
+        bant_data = final_state.get("bant_data", {})
+        apollo_insights = final_state.get("company_config", {}).get("apollo_insights")
     except Exception as e:
         logger.error(f"Error crítico en LangGraph: {e}")
         response_text = "Actualmente estoy presentando fallas técnicas, por favor aguarda un momento."
         bant_data = {}
+        apollo_insights = None
 
     # Protección robusta para el score
     raw_score = bant_data.get("score")
@@ -448,6 +460,7 @@ def chat(req: ChatRequest):
     return ChatResponse(
         response=response_text,
         bant=bant,
+        apollo_insights=apollo_insights,
         model_used=MODEL,
     )
 

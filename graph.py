@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import requests
+import re
 from typing import TypedDict, List, Dict, Any, Annotated
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
 
@@ -25,6 +27,64 @@ class AgentState(TypedDict):
 # ──────────────────────────────────────────────────────────────────
 # 2. Nodos del Grafo
 # ──────────────────────────────────────────────────────────────────
+
+def extract_email(text: str) -> str:
+    match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+    return match.group(0) if match else None
+
+def apollo_enrichment_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Intenta enriquecer el lead usando Apollo.io si la configuración está activa y hay un email.
+    """
+    company_config = state.get("company_config", {})
+    apollo_enabled = company_config.get("apollo_enabled", False)
+    apollo_api_key = company_config.get("apollo_api_key", "")
+    
+    if not apollo_enabled or not apollo_api_key:
+        return {}
+        
+    email_to_enrich = None
+    for msg in reversed(state["messages"]):
+        if isinstance(msg, HumanMessage):
+            found_email = extract_email(msg.content)
+            if found_email:
+                email_to_enrich = found_email
+                break
+                
+    if not email_to_enrich:
+        return {}
+        
+    if "apollo_insights" in company_config:
+        return {}
+        
+    logger.info(f"🔎 [Nodo: apollo_enrichment] - Extrayendo datos de Apollo para: {email_to_enrich}")
+    
+    try:
+        url = "https://api.apollo.io/v1/people/match"
+        headers = {"Content-Type": "application/json", "Cache-Control": "no-cache"}
+        data = {"api_key": apollo_api_key, "email": email_to_enrich}
+        
+        response = requests.post(url, headers=headers, json=data, timeout=5)
+        if response.status_code == 200:
+            apollo_data = response.json()
+            person = apollo_data.get("person", {})
+            if person:
+                org = person.get("organization", {})
+                title = person.get("title", "Desconocido")
+                seniority = person.get("seniority", "Desconocido")
+                company = org.get("name", "Desconocida")
+                industry = org.get("industry", "Desconocida")
+                employees = org.get("estimated_num_employees", "Desconocido")
+                
+                insights = f"El prospecto es {title} ({seniority}) en la empresa {company} (Industria: {industry}, Empleados: {employees}). Usa esta información a tu favor."
+                
+                updated_config = dict(company_config)
+                updated_config["apollo_insights"] = insights
+                return {"company_config": updated_config}
+    except Exception as e:
+        logger.warning(f"Error o límite alcanzado en Apollo API: {e}")
+        
+    return {}
 
 def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     """
@@ -89,11 +149,13 @@ def build_sdr_graph() -> StateGraph:
     workflow = StateGraph(AgentState)
 
     # 2. Añadir nodos
+    workflow.add_node("apollo_enrichment", apollo_enrichment_node)
     workflow.add_node("generate_reply", generate_reply_node)
     workflow.add_node("classify_lead", classify_lead_node)
 
     # 3. Definir flujo secuencial
-    workflow.add_edge(START, "generate_reply")
+    workflow.add_edge(START, "apollo_enrichment")
+    workflow.add_edge("apollo_enrichment", "generate_reply")
     workflow.add_edge("generate_reply", "classify_lead")
     workflow.add_edge("classify_lead", END)
 
