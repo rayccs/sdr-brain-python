@@ -137,6 +137,15 @@ class NexusChatResponse(BaseModel):
     suggestion: str
     color: str
 
+class ValidateConfigRequest(BaseModel):
+    niche: str
+    offer: str
+    services: str
+
+class ValidateConfigResponse(BaseModel):
+    valid: bool
+    reason: str
+
 class HandoffAnalysisRequest(BaseModel):
     history: List[ConversationMessage]
     lead_phone: Optional[str] = None
@@ -652,3 +661,41 @@ Responde ÚNICAMENTE con un JSON con el siguiente formato:
             suggestion="Revisar logs del sistema.",
             color="#ef4444"
         )
+
+@app.post("/validate-config", response_model=ValidateConfigResponse)
+def validate_config(req: ValidateConfigRequest):
+    """
+    Evalúa semánticamente la configuración de negocio para evitar toxicidad y alucinaciones.
+    """
+    llm = get_llm("gpt-4o-mini")
+    
+    system_prompt = """Eres un validador de configuración para un agente SDR de ventas B2B.
+El usuario ha introducido las 'Reglas de Negocio' de su empresa.
+Tu trabajo es evaluar si los textos tienen un mínimo sentido comercial o si contienen groserías, lenguaje tóxico, caracteres aleatorios (ej: asdfg) o información absurda.
+Si es válido, responde con valid: true y reason: "OK".
+Si es inválido, responde con valid: false y un reason muy corto y amable (máximo 15 palabras) explicando por qué (ej: "Por favor, especifica mejor tu servicio y evita palabras prohibidas").
+
+Responde ÚNICAMENTE en formato JSON:
+{
+  "valid": true,
+  "reason": "OK"
+}"""
+    
+    human_msg = f"Nicho: {req.niche}\nOferta: {req.offer}\nServicios: {req.services}"
+    
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_msg)
+    ]
+    
+    try:
+        response = llm.invoke(messages)
+        clean_json = response.content.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_json)
+        return ValidateConfigResponse(
+            valid=data.get("valid", True),
+            reason=data.get("reason", "OK")
+        )
+    except Exception as e:
+        logger.error(f"Error in config validation: {e}")
+        return ValidateConfigResponse(valid=True, reason="Error de validación ignorado.")
