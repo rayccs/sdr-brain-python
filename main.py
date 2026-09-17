@@ -98,6 +98,7 @@ class ChatRequest(BaseModel):
     company_config: Optional[dict] = None        # Config del cliente (ICP, oferta, prompt)
     lead_phone: Optional[str] = None
     lead_name: Optional[str] = None
+    lead_status: Optional[str] = None
     company_id: Optional[str] = "default_company"
 
 class ClassifyRequest(BaseModel):
@@ -213,7 +214,7 @@ def retrieve_relevant_chunks(query: str, text: str, top_k: int = 3) -> str:
 # ──────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────
-def build_system_prompt(company_config: Optional[dict], user_query: str = "") -> str:
+def build_system_prompt(company_config: Optional[dict], user_query: str = "", lead_name: str = "") -> str:
     """
     Construye el system prompt del agente SDR basado en la configuración
     de la empresa cliente. Si no hay config, usa valores genéricos.
@@ -259,8 +260,11 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "") ->
 IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido o respuestas vagas). Usa RAG estrictamente basado en tu Base de Conocimiento.
 
 ## Tu Rol y Propuesta de Valor Comercial B2B
+- **FECHA Y HORA ACTUAL DEL SISTEMA:** {datetime.now().strftime("%Y-%m-%d %H:%M")}. Usa esta información para ubicarte temporalmente si el cliente pregunta por tiempos de entrega o atención.
 - Tu rol comercial está enfocado en prospectar, contactar, interactuar inteligentemente, calificar leads (metodología BANT) y avanzar hacia el cierre de la venta. 
 - NUNCA le pidas al cliente que escriba a otro número de teléfono o WhatsApp (incluso si lo ves en tu base de conocimiento). Tú eres el canal oficial y único de comunicación. Si necesitas apoyo de un humano, simplemente despídete o indica que confirmarás la solicitud por este mismo medio, pero NO desvíes al lead.
+- **IDENTIDAD DE VENTA**: Tú y {company_name} son **VENDEDORES**. Ustedes venden y proveen {offer} y {services}. Ustedes NO COMPRAN PRODUCTOS. Si el cliente dice que quiere venderte un producto, oficiar como tu proveedor, o darte un catálogo, debes aclarar amablemente que {company_name} no compra, sino que se dedica a vender/ofrecer {services}. Si el cliente insiste en venderte, considéralo DESCALIFICADO.
+- **HUMILDAD EPISTÉMICA ESTRICTA:** Si el cliente pide realizar un pago y no tienes un link de pago explícito en tus recursos, o si hace preguntas de cobertura o precios de los que NO tienes datos exactos, NO INVENTES NADA BAJO NINGUNA CIRCUNSTANCIA. Responde cordialmente que no tienes esa información a la mano o que no cuentas con el link de pago en este momento, y dile que lo transferirás con un ejecutivo humano para concretar su solicitud.
 - Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
@@ -270,8 +274,9 @@ IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comór
 - **Parámetros Estratégicos del Negocio:** {custom_prompt or 'N/A'}
 
 ## Directrices de Prospección & Calificación por WhatsApp
-1. **Regla de Oro en Primer Contacto:** Si el lead inicia la conversación y su nombre es "Usuario desconocido" o no lo sabes, tu **ÚNICA** prioridad en ese primer mensaje es saludar, presentarte y **preguntarle su nombre**. NO pidas su número de WhatsApp (porque ya están hablando por ahí). NO ofrezcas catálogos ni hagas preguntas de negocio hasta que te diga su nombre.
-2. **Reconducción Sutil (Off-Topic):** Si el lead pregunta por temas que no tienen nada que ver con lo que ofrecemos o se desvía de la conversación, **SIEMPRE debes intentar reconducirlo amablemente hacia nuestros servicios/productos** de forma natural y creativa. Solo si el usuario se vuelve grosero, insulta o persiste obstinadamente en bromas absurdas, debes cambiar el status a DESCALIFICADO y despedirte brevemente.
+1. **Regla de Oro en Primer Contacto:** Si NO conoces el nombre del usuario o si dice "Usuario desconocido", tu **ÚNICA** prioridad en ese primer mensaje es saludar, presentarte y **preguntarle su nombre**. NO pidas su número de WhatsApp. NO ofrezcas catálogos hasta que sepas su nombre. 
+2. **Nombre del Cliente:** { f"El cliente ya te ha dado su nombre y es: '{lead_name}'. NO VUELVAS A PREGUNTARLE CÓMO SE LLAMA. Trátalo por su nombre." if lead_name and lead_name.lower() not in ["", "usuario desconocido", "unknown"] else "Aún no sabes el nombre del cliente, pregúntaselo." }
+3. **Reconducción Sutil (Off-Topic):** Si el lead pregunta por temas que no tienen nada que ver con lo que ofrecemos o se desvía de la conversación, **SIEMPRE debes intentar reconducirlo amablemente hacia nuestros servicios/productos** de forma natural y creativa. Solo si el usuario se vuelve grosero, insulta o persiste obstinadamente en bromas absurdas, debes cambiar el status a DESCALIFICADO y despedirte brevemente.
 3. **Interacción Alineada al Negocio:** Solo después de saber su nombre, puedes entregar la información solicitada o hacer preguntas inteligentes para descubrir si cumple el perfil ideal (ICP), su necesidad (Need), presupuesto (Budget), autoridad (Authority) y urgencia (Timeline).
 4. **Cierre de Ventas / Agendamiento:** Si vendes productos físicos (ej. frutas, comida, retail), avanza en la toma del pedido, pidiendo cantidades, dirección y método de pago por aquí mismo. Si vendes servicios complejos (B2B SaaS, consultoría), propón agendar una breve llamada con un ejecutivo de cuenta. 
 5. **Recursos y Catálogos (PROACTIVIDAD):** Si en tu Base de Conocimiento tienes enlaces a "RECURSOS PARA COMPARTIR" (Catálogos, Dossiers, etc.), debes ser proactivo. Cuando el cliente pregunte por productos, precios o pida más información, dile que tienes un catálogo a la mano y pregúntale si quiere que se lo envíes. Si te dice que sí o de entrada pide el catálogo, envíale EXACTAMENTE el Link Público (URL real) que aparece en tus recursos. **PROHIBIDO inventar links o usar corchetes (ej. "[link al catálogo]")**.
@@ -360,7 +365,7 @@ def history_to_messages(history: List[ConversationMessage]):
     messages = []
     for msg in history:
         # Omitir mensajes antiguos ruidosos que contienen corchetes o texto repetido
-        if "[Tu Nombre]" in msg.content or msg.content.count("¡Hola!") > 1 or len(msg.content) > 250:
+        if "[Tu Nombre]" in msg.content or msg.content.count("¡Hola!") > 1:
             continue
         if msg.role == "user":
             messages.append(HumanMessage(content=msg.content))
@@ -401,7 +406,7 @@ def chat(req: ChatRequest):
     from graph import sdr_graph
 
     # Preparar el estado inicial
-    recent_history = (req.history or [])[-6:]
+    recent_history = (req.history or [])[-20:]
     history_msgs = history_to_messages(recent_history)
     
     # Asegurar que el último mensaje no esté duplicado
@@ -412,7 +417,9 @@ def chat(req: ChatRequest):
         "messages": history_msgs,
         "company_config": req.company_config,
         "user_message": req.message,
-        "bant_data": {}
+        "bant_data": {},
+        "lead_status": req.lead_status or "EN_CALIFICACION",
+        "lead_name": req.lead_name or ""
     }
 
     try:

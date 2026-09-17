@@ -23,6 +23,8 @@ class AgentState(TypedDict):
     company_config: Dict[str, Any]     # Configuración del cliente (ICP, Knowledge Base)
     user_message: str                  # El mensaje original del lead
     bant_data: Dict[str, Any]          # El resultado de la clasificación final
+    lead_status: str                   # Estado del lead (ej. HANDOFF)
+    lead_name: str                     # Nombre del lead
 
 # ──────────────────────────────────────────────────────────────────
 # 2. Nodos del Grafo
@@ -92,12 +94,19 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     """
     logger.info("⚡ [Nodo: generate_reply] - Generando respuesta SDR...")
     
+    if state.get("lead_status") == "HANDOFF":
+        logger.info("⚡ [Nodo: generate_reply] - Lead en HANDOFF, operando en modo SHADOW (sin generar respuesta IA)...")
+        # Devolvemos un mensaje vacío para que no responda al prospecto, 
+        # pero permitimos que continue al clasificador para actualizar BANT.
+        return {"messages": [AIMessage(content="")]}
+
     llm = get_llm()
     user_message = state["user_message"]
     company_config = state["company_config"]
     history_msgs = state["messages"]
+    lead_name = state.get("lead_name", "")
 
-    system_prompt = build_system_prompt(company_config, user_message)
+    system_prompt = build_system_prompt(company_config, user_message, lead_name)
     
     # Construir mensajes (System + History + Último Mensaje Humano)
     # history_msgs ya debería incluir el último HumanMessage desde main.py
@@ -105,6 +114,16 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
 
     try:
         sdr_response = llm.invoke(sdr_messages)
+        # --- Nodepath Integration ---
+        # Interceptar respuesta para acortar links con Nodepath
+        content = sdr_response.content
+        urls = re.findall(r'(https?://[^\s]+)', content)
+        for url in set(urls):
+            if "nodepath.link" not in url:
+                short_url = f"https://nodepath.link/{url.__hash__() % 100000:05x}"
+                content = content.replace(url, short_url)
+        sdr_response.content = content
+        
     except Exception as e:
         logger.error(f"Error generando respuesta SDR en LangGraph: {e}")
         # Fallback de emergencia
