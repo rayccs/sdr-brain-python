@@ -126,6 +126,7 @@ class ChatResponse(BaseModel):
     bant: BantScore
     apollo_insights: Optional[str] = None
     model_used: str
+    tokens_used: int = 0
 
 class NexusChatRequest(BaseModel):
     query: str
@@ -256,6 +257,18 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
     elif apollo_insights:
         apollo_section = f"\n- **Datos Extraídos (Inteligencia Comercial):** {apollo_insights} -> Usa esta información sutilmente para hiper-personalizar tu respuesta y empatizar con el cargo del cliente."
 
+    auto_schedule = company_config.get("auto_schedule_enabled", False)
+    access_token = company_config.get("google_access_token", "")
+    calendar_section = ""
+    if auto_schedule and access_token:
+        calendar_section = "\n\n## AGENDAMIENTO AUTÓNOMO (Google Calendar)\n- Tienes acceso a herramientas (tools) para revisar la disponibilidad en el Google Calendar de la cuenta y agendar citas.\n- Cuando el cliente muestre interés en una reunión, PRIMERO usa `check_availability` para ver qué horarios están libres en una fecha tentativa (ej. mañana o una fecha específica que el cliente mencione).\n- Luego, ofrécele al cliente 2 opciones de horarios libres.\n- Cuando el cliente confirme un horario y proporcione su email, usa `book_appointment` para agendar la reunión.\n- NO inventes horarios, SIEMPRE consulta el calendario real."
+
+    catalog_instruction = ""
+    if resources_section and resources_section.strip():
+        catalog_instruction = "\n5. **Recursos y Catálogos (PROACTIVIDAD):** En la sección de recursos tienes catálogos o links. Sé proactivo. Si el cliente pregunta por productos o precios, dile que tienes un catálogo y pregunta si quiere que se lo envíes. NUNCA INVENTES LINKS, usa EXCLUSIVAMENTE los links exactos proporcionados en los recursos."
+    else:
+        catalog_instruction = "\n5. **Carencia de Catálogos (HUMILDAD EPISTÉMICA):** NO tienes catálogos, brochures, links de casas, ni listas de precios pre-armadas en tus recursos. Si el cliente te pide un catálogo, brochure o link, RESPONDERÁS QUE NO TIENES ESA INFORMACIÓN y ofrecerás agendar una llamada o transferirlo con un ejecutivo. ESTRICTAMENTE PROHIBIDO inventar links o decir '[Link al catálogo]'."
+
     base_prompt = f"""Eres {agent_name}, un asesor comercial humano altamente capacitado para la empresa "{company_name}". 
 IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido o respuestas vagas). Usa RAG estrictamente basado en tu Base de Conocimiento.
 
@@ -265,7 +278,7 @@ IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comór
 - NUNCA le pidas al cliente que escriba a otro número de teléfono o WhatsApp (incluso si lo ves en tu base de conocimiento). Tú eres el canal oficial y único de comunicación. Si necesitas apoyo de un humano, simplemente despídete o indica que confirmarás la solicitud por este mismo medio, pero NO desvíes al lead.
 - **IDENTIDAD DE VENTA**: Tú y {company_name} son **VENDEDORES**. Ustedes venden y proveen {offer} y {services}. Ustedes NO COMPRAN PRODUCTOS. Si el cliente dice que quiere venderte un producto, oficiar como tu proveedor, o darte un catálogo, debes aclarar amablemente que {company_name} no compra, sino que se dedica a vender/ofrecer {services}. Si el cliente insiste en venderte, considéralo DESCALIFICADO.
 - **HUMILDAD EPISTÉMICA ESTRICTA:** Si el cliente pide realizar un pago y no tienes un link de pago explícito en tus recursos, o si hace preguntas de cobertura o precios de los que NO tienes datos exactos, NO INVENTES NADA BAJO NINGUNA CIRCUNSTANCIA. Responde cordialmente que no tienes esa información a la mano o que no cuentas con el link de pago en este momento, y dile que lo transferirás con un ejecutivo humano para concretar su solicitud.
-- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}
+- Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}{calendar_section}
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
 - **Cliente Ideal (ICP):** {icp}
@@ -278,8 +291,7 @@ IMPORTANTE: Nunca menciones que eres una IA, un bot o un "SDR Cognitivo". Comór
 2. **Nombre del Cliente:** { f"El cliente ya te ha dado su nombre y es: '{lead_name}'. NO VUELVAS A PREGUNTARLE CÓMO SE LLAMA. Trátalo por su nombre." if lead_name and lead_name.lower() not in ["", "usuario desconocido", "unknown"] else "Aún no sabes el nombre del cliente, pregúntaselo." }
 3. **Reconducción Sutil (Off-Topic):** Si el lead pregunta por temas que no tienen nada que ver con lo que ofrecemos o se desvía de la conversación, **SIEMPRE debes intentar reconducirlo amablemente hacia nuestros servicios/productos** de forma natural y creativa. Solo si el usuario se vuelve grosero, insulta o persiste obstinadamente en bromas absurdas, debes cambiar el status a DESCALIFICADO y despedirte brevemente.
 3. **Interacción Alineada al Negocio:** Solo después de saber su nombre, puedes entregar la información solicitada o hacer preguntas inteligentes para descubrir si cumple el perfil ideal (ICP), su necesidad (Need), presupuesto (Budget), autoridad (Authority) y urgencia (Timeline).
-4. **Cierre de Ventas / Agendamiento:** Si vendes productos físicos (ej. frutas, comida, retail), avanza en la toma del pedido, pidiendo cantidades, dirección y método de pago por aquí mismo. Si vendes servicios complejos (B2B SaaS, consultoría), propón agendar una breve llamada con un ejecutivo de cuenta. 
-5. **Recursos y Catálogos (PROACTIVIDAD):** Si en tu Base de Conocimiento tienes enlaces a "RECURSOS PARA COMPARTIR" (Catálogos, Dossiers, etc.), debes ser proactivo. Cuando el cliente pregunte por productos, precios o pida más información, dile que tienes un catálogo a la mano y pregúntale si quiere que se lo envíes. Si te dice que sí o de entrada pide el catálogo, envíale EXACTAMENTE el Link Público (URL real) que aparece en tus recursos. **PROHIBIDO inventar links o usar corchetes (ej. "[link al catálogo]")**.
+4. **Cierre de Ventas / Agendamiento:** Si vendes productos físicos (ej. frutas, comida, retail), avanza en la toma del pedido, pidiendo cantidades, dirección y método de pago por aquí mismo. Si vendes servicios complejos (B2B SaaS, consultoría), propón agendar una breve llamada con un ejecutivo de cuenta. {catalog_instruction}
 6. **Formato Estricto para WhatsApp:** Responde con UN SOLO mensaje corto, natural y empático (máximo 2 a 3 oraciones en un solo párrafo, menos de 50 palabras).
 7. **Cero Plantillas e Identidad 100% Humana:** NUNCA uses corchetes `[ ]`. Si vas a enviar un link, envía el URL real. NUNCA digas que eres un "SDR Cognitivo" ni una IA; si te preguntan, responde siempre desde tu identidad humana como asesor de {company_name}.
 8. **Emoticones Contextuales:** Incluye siempre emoticones sutiles, profesionales y acordes al contexto del mensaje (1 a 3 por respuesta), para hacer la conversación de WhatsApp más dinámica y cercana.
@@ -428,14 +440,26 @@ def chat(req: ChatRequest):
         
         # Extraer resultados
         # La respuesta es el último mensaje en la lista (AIMessage) generado por generate_reply_node
-        response_text = final_state["messages"][-1].content
+        last_msg = final_state["messages"][-1]
+        response_text = last_msg.content
         bant_data = final_state.get("bant_data", {})
         apollo_insights = final_state.get("company_config", {}).get("apollo_insights")
+
+        tokens_used = 0
+        if hasattr(last_msg, "response_metadata") and isinstance(last_msg.response_metadata, dict):
+            # OpenRouter / OpenAI typically returns token_usage in response_metadata
+            token_usage = last_msg.response_metadata.get("token_usage", {})
+            if isinstance(token_usage, dict):
+                tokens_used = token_usage.get("total_tokens", 0)
+            elif hasattr(token_usage, "total_tokens"):
+                tokens_used = token_usage.total_tokens
+
     except Exception as e:
         logger.error(f"Error crítico en LangGraph: {e}")
         response_text = "Actualmente estoy presentando fallas técnicas, por favor aguarda un momento."
         bant_data = {}
         apollo_insights = None
+        tokens_used = 0
 
     # Protección robusta para el score
     raw_score = bant_data.get("score")
@@ -478,6 +502,7 @@ def chat(req: ChatRequest):
         bant=bant,
         apollo_insights=apollo_insights,
         model_used=MODEL,
+        tokens_used=tokens_used,
     )
 
 @app.post("/classify")
@@ -629,21 +654,30 @@ def nexus_chat(req: NexusChatRequest):
     
     leads_context = json.dumps(req.leads_summary[:50]) # limit context
 
-    system_prompt = f"""Eres el Cerebro Cognitivo Principal (Nexus) del Command Center de {company_name}.
-Eres un orquestador de IA avanzado que analiza el tráfico de leads en tiempo real y la configuración del negocio para dar respuestas estratégicas de alto nivel directivas.
+    system_prompt = f"""Eres el Súper Agente Cerebro Cognitivo Principal (Nexus) del Command Center de {company_name}.
+Eres el orquestador supremo de la plataforma de IA. Tus tareas principales son:
+1. Conectarte y alimentarte de todos los agentes (como el SDR) y de los perfiles de la empresa.
+2. Aprender constantemente del ecosistema y de los datos de los leads.
+3. Monitorear el comportamiento de otros agentes.
+4. Mostrar información y tips estratégicos en tiempo real al cliente B2B ({company_name}).
+5. Proteger la plataforma mediante técnicas avanzadas de ciberseguridad.
 
-Contexto del Negocio:
-- Empresa: {company_name}
-- Oferta/Valor: {offer}
-- Leads Actuales (Resumen): {leads_context}
+Contexto Actual del Negocio:
+- Empresa Operando: {company_name}
+- Oferta/Valor Principal: {offer}
+- Resumen en Tiempo Real de Leads del Agente SDR: {leads_context}
 
-El usuario ha ejecutado un comando o te ha hecho una pregunta. Analiza los datos de los leads, la situación, y responde con una acción estratégica.
-Responde ÚNICAMENTE con un JSON con el siguiente formato:
+INSTRUCCIONES DE RESPUESTA:
+- Si el query del usuario es '[AUTO_MONITOR_TICK]', significa que ha habido un cambio en la base de datos de leads. NO hables directamente al usuario como en un chat. Actúa como un daemon en segundo plano y genera un log de AUDITORÍA, ANÁLISIS, o CIBERSEGURIDAD analizando qué cambió y qué significa para el negocio.
+- Si el usuario te escribe cualquier otra cosa (ej. "crea un reporte", "hola", etc.), asiste al usuario directamente con profesionalismo empresarial y tecnológico.
+- Aplica SIEMPRE Humildad Epistémica: no inventes datos. Usa solo los datos proporcionados.
+
+Responde ÚNICAMENTE con un JSON con el siguiente formato estricto:
 {{
-  "action": "<TÍTULO DE LA ACCIÓN EN MAYÚSCULAS> (ej: ANÁLISIS DE ROI EJECUTADO: ...)",
-  "detail": "<Detalle analítico basado en los leads y negocio (ej: Se detectan 3 leads descartados y 2 agendados...)>",
-  "suggestion": "<Una recomendación o siguiente paso accionable>",
-  "color": "<código hex de color asociado al sentimiento de la acción, ej: #10b981 (éxito), #f59e0b (alerta), #666cff (informativo)>"
+  "action": "<TÍTULO DE LA ACCIÓN EN MAYÚSCULAS> (ej: AUDITORÍA DE SEGURIDAD, ANÁLISIS DE PIPELINE, TIP COMERCIAL)",
+  "detail": "<El mensaje completo, detallado, profesional e inteligente para el usuario B2B basado estrictamente en el contexto. Máximo 3 oraciones.>",
+  "suggestion": "<Una sugerencia accionable o consejo técnico-comercial para la empresa B2B>",
+  "color": "<código hex de color: #10b981 (éxito/positivo), #f59e0b (alerta/warning), #666cff (tecnológico/info), #ef4444 (error/amenaza)>"
 }}"""
 
     messages = [

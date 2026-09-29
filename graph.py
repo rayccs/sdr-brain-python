@@ -10,8 +10,9 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from langgraph.graph import StateGraph, START, END
 
 # Importar dependencias de main.py
-# Como main.py define config y llm, importamos directamente
 from main import get_llm, build_system_prompt, build_classifier_prompt, parse_bant_json
+from langchain_core.tools import tool
+import calendar_tools
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +110,51 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     system_prompt = build_system_prompt(company_config, user_message, lead_name)
     
     # Construir mensajes (System + History + Último Mensaje Humano)
-    # history_msgs ya debería incluir el último HumanMessage desde main.py
     sdr_messages = [SystemMessage(content=system_prompt)] + history_msgs
+
+    # --- Herramientas de Calendario ---
+    auto_schedule = company_config.get("auto_schedule_enabled", False)
+    access_token = company_config.get("google_access_token", "")
+    
+    active_tools = []
+    if auto_schedule and access_token:
+        @tool
+        def check_availability(date_str: str) -> str:
+            """Revisa la disponibilidad en Google Calendar para una fecha (YYYY-MM-DD). Usa esto ANTES de agendar para sugerir horarios libres."""
+            return calendar_tools.check_calendar_availability(access_token, date_str)
+            
+        @tool
+        def book_appointment(start_time: str, end_time: str, summary: str, description: str, attendee_email: str = None) -> str:
+            """Agenda una reunión en Google Calendar. start_time y end_time deben ser formato ISO 8601 (ej. 2023-10-25T10:00:00-03:00)."""
+            return calendar_tools.book_calendar_appointment(access_token, start_time, end_time, summary, description, attendee_email)
+            
+        active_tools = [check_availability, book_appointment]
+        llm = llm.bind_tools(active_tools)
 
     try:
         sdr_response = llm.invoke(sdr_messages)
+        
+        # Ejecutar tools si el LLM las invocó
+        if active_tools and hasattr(sdr_response, "tool_calls") and sdr_response.tool_calls:
+            logger.info(f"🔧 LLM invocó tools: {sdr_response.tool_calls}")
+            sdr_messages.append(sdr_response) # Añadimos el mensaje de la IA con la llamada
+            
+            tool_map = {t.name: t for t in active_tools}
+            for tool_call in sdr_response.tool_calls:
+                tool_instance = tool_map.get(tool_call["name"])
+                if tool_instance:
+                    tool_output = tool_instance.invoke(tool_call["args"])
+                    from langchain_core.messages import ToolMessage
+                    sdr_messages.append(ToolMessage(
+                        name=tool_call["name"],
+                        tool_call_id=tool_call["id"],
+                        content=str(tool_output)
+                    ))
+                    
+            # Segunda llamada al LLM con el resultado de las tools
+            sdr_response = llm.invoke(sdr_messages)
+
         # --- Nodepath Integration ---
-        # Interceptar respuesta para acortar links con Nodepath
         content = sdr_response.content
         urls = re.findall(r'(https?://[^\s]+)', content)
         for url in set(urls):
@@ -126,10 +165,9 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error generando respuesta SDR en LangGraph: {e}")
-        # Fallback de emergencia
         sdr_response = AIMessage(content="Actualmente estoy presentando fallas técnicas, por favor aguarda un momento.")
 
-    return {"messages": [sdr_response]} # LangGraph añadirá este AIMessage al estado automáticamente
+    return {"messages": [sdr_response]}
 
 def classify_lead_node(state: AgentState) -> Dict[str, Any]:
     """
