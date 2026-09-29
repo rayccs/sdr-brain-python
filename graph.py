@@ -115,18 +115,19 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     # --- Herramientas de Calendario ---
     auto_schedule = company_config.get("auto_schedule_enabled", False)
     access_token = company_config.get("google_access_token", "")
+    refresh_token = company_config.get("google_refresh_token", "")
     
     active_tools = []
     if auto_schedule and access_token:
         @tool
         def check_availability(date_str: str) -> str:
             """Revisa la disponibilidad en Google Calendar para una fecha (YYYY-MM-DD). Usa esto ANTES de agendar para sugerir horarios libres."""
-            return calendar_tools.check_calendar_availability(access_token, date_str)
+            return calendar_tools.check_calendar_availability(access_token, refresh_token, date_str)
             
         @tool
         def book_appointment(start_time: str, end_time: str, summary: str, description: str, attendee_email: str = None) -> str:
             """Agenda una reunión en Google Calendar. start_time y end_time deben ser formato ISO 8601 (ej. 2023-10-25T10:00:00-03:00)."""
-            return calendar_tools.book_calendar_appointment(access_token, start_time, end_time, summary, description, attendee_email)
+            return calendar_tools.book_calendar_appointment(access_token, refresh_token, start_time, end_time, summary, description, attendee_email)
             
         active_tools = [check_availability, book_appointment]
         llm = llm.bind_tools(active_tools)
