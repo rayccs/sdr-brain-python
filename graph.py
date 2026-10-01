@@ -32,6 +32,8 @@ class AgentState(TypedDict):
 # ──────────────────────────────────────────────────────────────────
 
 def extract_email(text: str) -> str:
+    if not isinstance(text, str):
+        return None
     match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
     return match.group(0) if match else None
 
@@ -157,12 +159,22 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
 
         # --- Nodepath Integration ---
         content = sdr_response.content
+        
+        # Ensure content is a string
+        if isinstance(content, list):
+            content = " ".join([str(item.get("text", item)) if isinstance(item, dict) else str(item) for item in content])
+        elif not isinstance(content, str):
+            content = str(content)
+            
         urls = re.findall(r'(https?://[^\s]+)', content)
         for url in set(urls):
             if "nodepath.link" not in url:
                 short_url = f"https://nodepath.link/{url.__hash__() % 100000:05x}"
                 content = content.replace(url, short_url)
-        sdr_response.content = content
+        
+        # Solo reasignamos si era un string originalmente, o si lo convertimos a string.
+        if isinstance(sdr_response.content, str):
+            sdr_response.content = content
         
     except Exception as e:
         logger.error(f"Error generando respuesta SDR en LangGraph: {e}")
