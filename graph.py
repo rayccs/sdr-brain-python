@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from langgraph.graph import StateGraph, START, END
 
 # Importar dependencias de main.py
-from main import get_llm, build_system_prompt, build_classifier_prompt, parse_bant_json
+from main import get_llm, get_gemini_llm, build_system_prompt, build_classifier_prompt, parse_bant_json
 from langchain_core.tools import tool
 import calendar_tools
 
@@ -97,13 +97,14 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     """
     logger.info("⚡ [Nodo: generate_reply] - Generando respuesta SDR...")
     
-    if state.get("lead_status") == "HANDOFF":
-        logger.info("⚡ [Nodo: generate_reply] - Lead en HANDOFF, operando en modo SHADOW (sin generar respuesta IA)...")
+    if state.get("lead_status") in ["HANDOFF", "POR_AGENDAR"]:
+        logger.info(f"⚡ [Nodo: generate_reply] - Lead en {state.get('lead_status')}, operando en modo SHADOW (sin generar respuesta IA)...")
         # Devolvemos un mensaje vacío para que no responda al prospecto, 
         # pero permitimos que continue al clasificador para actualizar BANT.
         return {"messages": [AIMessage(content="")]}
 
-    llm = get_llm()
+    hermes_llm = get_llm()
+    gemini_llm = get_gemini_llm()
     user_message = state["user_message"]
     company_config = state["company_config"]
     history_msgs = state["messages"]
@@ -132,14 +133,15 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
             return calendar_tools.book_calendar_appointment(access_token, refresh_token, start_time, end_time, summary, description, attendee_email)
             
         active_tools = [check_availability, book_appointment]
-        llm = llm.bind_tools(active_tools)
+        gemini_llm = gemini_llm.bind_tools(active_tools)
 
     try:
-        sdr_response = llm.invoke(sdr_messages)
+        # 1. Primera pasada: Gemini decide si usar herramientas
+        sdr_response = gemini_llm.invoke(sdr_messages)
         
-        # Ejecutar tools si el LLM las invocó
+        # Ejecutar tools si Gemini las invocó
         if active_tools and hasattr(sdr_response, "tool_calls") and sdr_response.tool_calls:
-            logger.info(f"🔧 LLM invocó tools: {sdr_response.tool_calls}")
+            logger.info(f"🔧 Gemini invocó tools: {sdr_response.tool_calls}")
             sdr_messages.append(sdr_response) # Añadimos el mensaje de la IA con la llamada
             
             tool_map = {t.name: t for t in active_tools}
@@ -154,8 +156,11 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
                         content=str(tool_output)
                     ))
                     
-            # Segunda llamada al LLM con el resultado de las tools
-            sdr_response = llm.invoke(sdr_messages)
+            # Segunda llamada: Hermes genera la respuesta final con el resultado de las tools
+            sdr_response = hermes_llm.invoke(sdr_messages)
+        else:
+            # Si Gemini NO invocó tools, usamos a Hermes para responder
+            sdr_response = hermes_llm.invoke(sdr_messages)
 
         # --- Nodepath Integration ---
         content = sdr_response.content

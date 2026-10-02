@@ -29,6 +29,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 import PyPDF2
 from docx import Document
 
+import niche_presets
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,12 +75,21 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Usamos Hermes 3 por defecto para máxima obediencia y zero censura (Ideal para SDR B2B)
 MODEL = os.getenv("LLM_MODEL", "nousresearch/hermes-3-llama-3.1-405b")
 
-def get_llm(model_override: Optional[str] = None) -> ChatOpenAI:
+def get_llm(model_override: Optional[str] = None, temperature: float = 0.6, max_tokens: int = 1024) -> ChatOpenAI:
     return ChatOpenAI(
         model=model_override or MODEL,
         openai_api_key=OPENROUTER_API_KEY,
         openai_api_base="https://openrouter.ai/api/v1",
-        temperature=0.6,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+def get_gemini_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        model="google/gemini-2.0-flash-exp",
+        openai_api_key=OPENROUTER_API_KEY,
+        openai_api_base="https://openrouter.ai/api/v1",
+        temperature=0.0,
         max_tokens=1024,
     )
 
@@ -257,11 +268,36 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
     elif apollo_insights:
         apollo_section = f"\n- **Datos Extraídos (Inteligencia Comercial):** {apollo_insights} -> Usa esta información sutilmente para hiper-personalizar tu respuesta y empatizar con el cargo del cliente."
 
+    # --- Niche Presets ---
+    preset = niche_presets.get_niche_preset(icp)
+    preset_tone = preset.get("tone", "Profesional y claro.")
+    preset_length = preset.get("length_rule", "MÁXIMO 2 a 5 líneas por mensaje.")
+    preset_handoff = preset.get("handoff_rule", "Ofrece agendar reunión.")
+
     auto_schedule = company_config.get("auto_schedule_enabled", False)
     access_token = company_config.get("google_access_token", "")
+    business_hours = company_config.get("business_hours", "Lunes a Viernes, 09:00 - 18:00")
     calendar_section = ""
     if auto_schedule and access_token:
-        calendar_section = "\n\n## AGENDAMIENTO AUTÓNOMO (Google Calendar)\n- Tienes acceso a herramientas (tools) para revisar la disponibilidad en el Google Calendar de la cuenta y agendar citas.\n- Cuando el cliente muestre interés en una reunión, PRIMERO usa `check_availability` para ver qué horarios están libres en una fecha tentativa (ej. mañana o una fecha específica que el cliente mencione).\n- Luego, ofrécele al cliente 2 opciones de horarios libres.\n- Cuando el cliente confirme un horario y proporcione su email, usa `book_appointment` para agendar la reunión.\n- NO inventes horarios, SIEMPRE consulta el calendario real."
+        calendar_section = f"""
+
+## AGENDAMIENTO AUTÓNOMO (Google Calendar) — OBLIGATORIO
+TIENES herramientas (tools) de calendario. Tu comportamiento OBLIGATORIO es:
+
+REGLA ABSOLUTA: Cuando el cliente dice "sí", "quiero agendar", "dale", "por favor", 
+"confirmo" o cualquier variante afirmativa a una propuesta de reunión, 
+DEBES EJECUTAR la tool `check_availability` con la fecha de MAÑANA (o la fecha 
+que el cliente sugiera). NO respondas con texto sugiriendo agendar sin usar la tool.
+
+Horario de Atención de la Empresa: {business_hours}
+Solo puedes ofrecer horarios que estén DENTRO de este horario de atención.
+
+FLUJO IMPERATIVO:
+1. Cliente muestra interés → USA `check_availability` inmediatamente.
+2. Con el resultado, ofrece 2 opciones libres dentro del horario de atención.
+3. Cliente confirma horario → USA `book_appointment`.
+4. Si no tienes email del cliente, pídelo ANTES de agendar.
+5. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL."""
 
     catalog_instruction = ""
     if resources_section and resources_section.strip():
@@ -291,9 +327,10 @@ IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un
 2. **Nombre del Cliente:** { f"El cliente ya te ha dado su nombre y es: '{lead_name}'. NO VUELVAS A PREGUNTARLE CÓMO SE LLAMA. Trátalo por su nombre." if lead_name and lead_name.lower() not in ["", "usuario desconocido", "unknown"] else "Aún no sabes el nombre del cliente, pregúntaselo." }
 3. **Manejo de Nombre Rechazado o Falso:** Si el cliente se niega a dar su nombre o da un nombre falso/absurdo, asume trato neutral inmediato. NO insistas más de una vez, no lo corrijas ni te burles de él. Simplemente avanza en la calificación del negocio.
 4. **Interacción Alineada al Negocio:** Descubre si el prospecto cumple el perfil ideal (ICP), su necesidad (Need), presupuesto (Budget), autoridad (Authority) y urgencia (Timeline).
-5. **Decisión de Agendamiento vs Derivación:** Evalúa siempre la necesidad real. Si el cliente califica y tienes Google Calendar habilitado, usa `check_availability` y luego `book_appointment`. Si el prospecto tiene una duda muy compleja, es una queja de soporte, o no encaja del todo en el calendario, NO AGENDES y derívalo a un ejecutivo humano amablemente.
+5. **Decisión de Agendamiento vs Derivación:** Evalúa la necesidad real según esta directriz de tu nicho: {preset_handoff}
 6. **Formato Estricto para WhatsApp:** 
-   - Límite de longitud: MÁXIMO 2 a 5 líneas por mensaje. Sé extremadamente conciso.
+   - Límite de longitud: {preset_length} Sé extremadamente conciso.
+   - Tono: {preset_tone}
    - Emojis: MÁXIMO 2 emojis por mensaje. No satures.
    - Bucle de saludos/disculpas: NUNCA repitas un saludo ("Hola de nuevo") si la conversación ya inició. NUNCA repitas disculpas excesivas o reiterativas. Sé directo, empático y resolutivo.
 7. **Cero Plantillas:** NUNCA uses corchetes `[ ]`. Si vas a enviar un link, envía el URL real. 
