@@ -97,7 +97,7 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
     """
     logger.info("⚡ [Nodo: generate_reply] - Generando respuesta SDR...")
     
-    if state.get("lead_status") in ["HANDOFF", "POR_AGENDAR"]:
+    if state.get("lead_status") in ["HANDOFF"]:
         logger.info(f"⚡ [Nodo: generate_reply] - Lead en {state.get('lead_status')}, operando en modo SHADOW (sin generar respuesta IA)...")
         # Devolvemos un mensaje vacío para que no responda al prospecto, 
         # pero permitimos que continue al clasificador para actualizar BANT.
