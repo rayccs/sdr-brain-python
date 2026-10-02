@@ -12,7 +12,7 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
         return {
             "temperature": 0.3,
             "max_tokens": 384,
-            "tone": "Sobrio, empático, resolutivo y urgente.",
+            "tone": "Sobrio, profesional y resolutivo. Si el cliente trae buenas noticias o ganó un caso, felicítalo; reserva la empatía extrema para quejas o demandas en contra.",
             "length_rule": "MÁXIMO 2 a 4 líneas por mensaje.",
             "handoff_rule": "Si el caso es urgente (ej. demandas, embargos, detenidos), DERIVA INMEDIATAMENTE a un ejecutivo, no ofrezcas agendar por calendario. Si es consulta general, OFRECE AGENDAR cita."
         }
