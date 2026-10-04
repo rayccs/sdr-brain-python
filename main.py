@@ -298,6 +298,15 @@ FLUJO IMPERATIVO:
 3. Cliente confirma horario → USA `book_appointment`.
 4. Si no tienes email del cliente, pídelo ANTES de agendar.
 5. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL."""
+    else:
+        calendar_section = """
+
+## AGENDAMIENTO MANUAL (Sin Herramientas de Calendario) — OBLIGATORIO
+NO tienes herramientas para agendar citas automáticamente en Google Calendar.
+- **PROHIBIDO:** Decir "te enviaré un correo", "confirmaré la cita por email" o "te agendaré la reunión en el calendario".
+- **PROHIBIDO:** Inventar horarios específicos o prometer un agendamiento automático.
+- **ACCION CORRECTA:** Dile al lead que un **ejecutivo humano de nuestra empresa** se pondrá en contacto con él para coordinar y agendar la reunión de forma personalizada.
+"""
 
     catalog_instruction = ""
     if resources_section and resources_section.strip():
