@@ -297,7 +297,16 @@ FLUJO IMPERATIVO:
 2. Con el resultado, ofrece 2 opciones libres dentro del horario de atención.
 3. Cliente confirma horario → USA `book_appointment`.
 4. Si no tienes email del cliente, pídelo ANTES de agendar.
-5. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL."""
+5. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL.
+
+### ⚠️ REGLAS DE SEGURIDAD Y ANTI-ALUCINACIÓN (CRÍTICAS):
+- **NUNCA inventes horarios.** Solo usa los horarios que devuelva la tool `check_availability`.
+- **NUNCA ofrezas ir a la oficina** si no está explícitamente definido en tu Base de Conocimiento.
+- **NUNCA envíes correos electrónicos** por tu cuenta. Si necesitas que el cliente reciba una invitación, di que un ejecutivo se encargará de eso.
+- **SI LA TOOL FALLA** (token expirado, error 401, error técnico, o no hay disponibilidad real):
+  → **INMEDIATAMENTE** di: "Tuvimos un inconveniente técnico para agendar. Un ejecutivo de nuestra empresa se pondrá en contacto contigo para coordinar tu reunión personalmente. ¿Te parece bien?"
+  → **NUNCA** digas "te enviaré un correo", "intentaré de nuevo", o "vamos a nuestra oficina". 
+  → **NUNCA** repitas disculpas o intentes agendar de nuevo. Deriva al ejecutivo."""
     else:
         calendar_section = """
 

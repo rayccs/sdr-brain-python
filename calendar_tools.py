@@ -110,13 +110,14 @@ def book_calendar_appointment(access_token: str, refresh_token: str, start_time:
         if attendee_email:
             event["attendees"] = [{"email": attendee_email}]
             
-        resp = requests.post(url, headers=headers, json=event)
+        params = {"sendUpdates": "all"}
+        resp = requests.post(url, headers=headers, params=params, json=event)
         
         if resp.status_code == 401 and refresh_token:
             new_token = refresh_google_token(refresh_token)
             if new_token:
                 headers["Authorization"] = f"Bearer {new_token}"
-                resp = requests.post(url, headers=headers, json=event)
+                resp = requests.post(url, headers=headers, params=params, json=event)
                 
         if resp.status_code == 401:
             return "Error: Token expirado o inválido. No se pudo agendar. Deriva a un ejecutivo para continuar."
