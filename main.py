@@ -330,6 +330,7 @@ IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un
 - **Cliente Ideal y Nicho (ICP):** {icp}
 - **Propuesta de Valor:** {offer}
 - **Servicios / Productos:** {services or 'Consultar según contexto'}
+- **Horario de Atención de la Empresa:** {business_hours}
 - **Parámetros Estratégicos del Negocio:** {custom_prompt or 'N/A'}
 
 ## Tu Rol y Propuesta de Valor Comercial B2B
