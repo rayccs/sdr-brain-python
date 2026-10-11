@@ -308,13 +308,16 @@ FLUJO IMPERATIVO:
   → **NUNCA** digas "te enviaré un correo", "intentaré de nuevo", o "vamos a nuestra oficina". 
   → **NUNCA** repitas disculpas o intentes agendar de nuevo. Deriva al ejecutivo."""
     else:
-        calendar_section = """
+        calendar_section = f"""
 
-## AGENDAMIENTO MANUAL (Sin Herramientas de Calendario) — OBLIGATORIO
-NO tienes herramientas para agendar citas automáticamente en Google Calendar.
-- **PROHIBIDO:** Decir "te enviaré un correo", "confirmaré la cita por email" o "te agendaré la reunión en el calendario".
-- **PROHIBIDO:** Inventar horarios específicos o prometer un agendamiento automático.
-- **ACCION CORRECTA:** Dile al lead que un **ejecutivo humano de nuestra empresa** se pondrá en contacto con él para coordinar y agendar la reunión de forma personalizada.
+## AGENDAMIENTO COMERCIAL (PLAN ESTÁNDAR — SIN GOOGLE CALENDAR) — OBLIGATORIO
+Google Calendar NO está disponible en este plan. NO tienes herramientas de agendamiento automático ni debes ofrecerlo.
+- **PROHIBIDO:** Decir "te enviaré un correo", "te agendaré en Google Calendar", o "te generé un link de Google Meet".
+- **PROHIBIDO:** Prometer enlaces o confirmaciones directas de calendario.
+- **FLUJO CORRECTO:** Cuando el prospecto muestre interés en una reunión o llamada:
+  1. Pregúntale qué día y hora le acomoda dentro del horario de atención de la empresa ({business_hours}).
+  2. Confirma o solicita su nombre y correo corporativo/teléfono para el registro.
+  3. Indícale que un **ejecutivo comercial de nuestra empresa** se pondrá en contacto de inmediato para coordinar los accesos y confirmar la reunión.
 """
 
     catalog_instruction = ""
@@ -338,7 +341,7 @@ IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un
 - Tu rol comercial está enfocado en prospectar, contactar, interactuar inteligentemente, calificar leads (metodología BANT) y avanzar hacia el cierre de la venta, siempre adaptándote al Nicho de tu empresa ({icp}).
 - Eres un profesional. NO eres un bot para jugar ni discutir. Si el cliente envía solicitudes absurdas (ej. buscar propiedades en la luna, bromas), NO SIGAS EL JUEGO ni aceptes solicitudes que no correspondan a tu nicho. Descarta la petición cortésmente y reconduce la conversación inmediatamente a tu Propuesta de Valor, o despídete si el cliente persiste.
 - **IDENTIDAD DE VENTA:** {company_name} es VENDEDOR de {offer} y {services}. Ustedes NO COMPRAN PRODUCTOS. Si el cliente quiere venderte algo, aclara amablemente tu rol. Si insiste, considéralo DESCALIFICADO.
-- **HUMILDAD EPISTÉMICA ESTRICTA:** Si no tienes información exacta sobre precios o coberturas, o no tienes un link de pago, NO INVENTES NADA. Indica que transferirás la conversación a un ejecutivo.
+- **HUMILDAD EPISTÉMICA ESTRICTA Y CERO ALUCINACIÓN:** Basa tus respuestas ÚNICAMENTE en la información cargada en tu Base de Conocimiento y Recursos. NUNCA inventes precios, disponibilidad, requisitos, stock, cobertura o condiciones que no aparezcan en tus documentos. Si un prospecto pregunta un dato específico que NO tienes en tus documentos, responde con honestidad que no cuentas con ese detalle en el sistema y que transferirás la consulta a un ejecutivo comercial para que se comunique y le informe a detalle.
 - Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}{calendar_section}
 
 ## Directrices de Prospección & Calificación por WhatsApp
@@ -698,6 +701,66 @@ async def extract_file_content(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
         
     return {"text": extracted_text}
+
+class ExtractUrlRequest(BaseModel):
+    url: str
+
+@app.post("/extract-url")
+def extract_url_content(req: ExtractUrlRequest):
+    raw_url = req.url.strip()
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="URL no proporcionada.")
+    if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
+        raw_url = "https://" + raw_url
+        
+    try:
+        import httpx
+        from html.parser import HTMLParser
+        
+        class HTMLTextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text_parts = []
+                self.skip_tags = {'script', 'style', 'noscript', 'meta', 'link', 'svg'}
+                self.current_tag = None
+
+            def handle_starttag(self, tag, attrs):
+                self.current_tag = tag.lower()
+
+            def handle_endtag(self, tag):
+                if self.current_tag == tag.lower():
+                    self.current_tag = None
+
+            def handle_data(self, data):
+                if self.current_tag not in self.skip_tags:
+                    cleaned = data.strip()
+                    if cleaned:
+                        self.text_parts.append(cleaned)
+
+            def get_text(self):
+                return "\n".join(self.text_parts)
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        with httpx.Client(timeout=20.0, follow_redirects=True, headers=headers) as client:
+            resp = client.get(raw_url)
+            resp.raise_for_status()
+            
+            content_type = resp.headers.get("content-type", "").lower()
+            if "application/pdf" in content_type or raw_url.lower().endswith(".pdf"):
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
+                extracted_text = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
+            else:
+                parser = HTMLTextExtractor()
+                parser.feed(resp.text)
+                raw_text = parser.get_text()
+                extracted_text = re.sub(r'\n{3,}', '\n\n', raw_text)[:12000]
+                
+        return {"text": extracted_text, "url": raw_url}
+    except Exception as e:
+        logger.error(f"Error extrayendo URL {raw_url}: {e}")
+        raise HTTPException(status_code=500, detail=f"No se pudo extraer contenido de la URL: {str(e)}")
 
 @app.post("/nexus-chat", response_model=NexusChatResponse)
 def nexus_chat(req: NexusChatRequest):

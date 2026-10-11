@@ -14,7 +14,7 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
             "max_tokens": 384,
             "tone": "Sobrio, profesional y resolutivo. Si el cliente trae buenas noticias o ganó un caso, felicítalo; reserva la empatía extrema para quejas o demandas en contra.",
             "length_rule": "MÁXIMO 2 a 4 líneas por mensaje.",
-            "handoff_rule": "Pregunta de manera natural si el lead desea agendar una reunión o videollamada en Google Calendar para atender su caso. Si el lead expresa que hay una emergencia legal extrema (ej. detenidos, embargos inmediatos, plazos urgentes decretados), DERIVA INMEDIATAMENTE a un ejecutivo humano sin ofrecer agendamiento."
+            "handoff_rule": "Pregunta de manera natural si el lead desea coordinar una reunión o videollamada para atender su caso. Si el lead expresa que hay una emergencia legal extrema (ej. detenidos, embargos inmediatos, plazos urgentes decretados), DERIVA INMEDIATAMENTE a un ejecutivo humano."
         }
 
     # 2. Inmobiliarias
@@ -24,7 +24,7 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
             "max_tokens": 384,
             "tone": "Amigable, aspiracional y servicial.",
             "length_rule": "MÁXIMO 3 a 5 líneas por mensaje.",
-            "handoff_rule": "Prioriza siempre ofrecer agendar una VISITA a la propiedad usando el calendario. Si preguntan temas complejos de financiamiento, deriva a un ejecutivo."
+            "handoff_rule": "Prioriza siempre ofrecer coordinar una VISITA a la propiedad en los horarios disponibles. Si preguntan temas complejos de financiamiento o subsidios específicos no detallados en tus documentos, deriva a un ejecutivo."
         }
 
     # 3. Clínicas y Salud
@@ -34,7 +34,7 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
             "max_tokens": 384,
             "tone": "Cálido, profesional y tranquilizador.",
             "length_rule": "MÁXIMO 2 a 3 líneas por mensaje.",
-            "handoff_rule": "Si es una emergencia médica, DERIVA INMEDIATAMENTE. Si es para un control o consulta de rutina, OFRECE AGENDAR cita médica."
+            "handoff_rule": "Si es una emergencia médica, DERIVA INMEDIATAMENTE. Si es para un control o consulta de rutina, ofrece coordinar la atención con el equipo de admisión."
         }
 
     # 4. Servicios TI / Consultoría / General
@@ -43,5 +43,5 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
         "max_tokens": 512,
         "tone": "Profesional, claro y consultivo.",
         "length_rule": "MÁXIMO 2 a 5 líneas por mensaje.",
-        "handoff_rule": "Ofrece siempre agendar una videollamada o demo para entender mejor sus necesidades."
+        "handoff_rule": "Ofrece coordinar una videollamada o sesión demostrativa para profundizar en sus necesidades y transferir el contacto al ejecutivo comercial."
     }
