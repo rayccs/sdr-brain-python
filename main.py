@@ -143,12 +143,17 @@ class NexusChatRequest(BaseModel):
     query: str
     company_config: Optional[dict] = None
     leads_summary: Optional[List[dict]] = []
+    conversations_sample: Optional[List[dict]] = []
 
 class NexusChatResponse(BaseModel):
     action: str
     detail: str
     suggestion: str
     color: str
+    category: Optional[str] = "GENERAL"
+    findings: Optional[List[str]] = []
+    recommended_action: Optional[str] = None
+    target_tab: Optional[int] = 7
 
 class ValidateConfigRequest(BaseModel):
     niche: str
@@ -766,6 +771,7 @@ def extract_url_content(req: ExtractUrlRequest):
 def nexus_chat(req: NexusChatRequest):
     """
     Cerebro Cognitivo Principal - Endpoint de Command Center
+    Monitorea conversaciones reales de leads del SDR y aconseja mejoras en la ingesta B2B
     """
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY no configurada")
@@ -775,33 +781,51 @@ def nexus_chat(req: NexusChatRequest):
     company_config = req.company_config or {}
     company_name = company_config.get("name", company_config.get("Name", "Nuestra Empresa"))
     offer = company_config.get("value_offer", company_config.get("ValueOffer", "N/A"))
+    services = company_config.get("services", company_config.get("Services", "N/A"))
+    icp = company_config.get("icp", company_config.get("ICP", "N/A"))
+    kb = company_config.get("knowledge_base", company_config.get("KnowledgeBase", ""))
+    kb_empty = not kb or str(kb).strip().lower() in ["", "undefined", "null", "none"]
+    business_hours = company_config.get("business_hours", "N/A")
     
-    leads_context = json.dumps(req.leads_summary[:50]) # limit context
+    leads_context = json.dumps(req.leads_summary[:30], ensure_ascii=False) if req.leads_summary else "[]"
+    convs_context = json.dumps(req.conversations_sample[:30], ensure_ascii=False) if req.conversations_sample else "[]"
 
     system_prompt = f"""Eres el Súper Agente Cerebro Cognitivo Principal (Nexus) del Command Center de {company_name}.
 Eres el orquestador supremo de la plataforma de IA. Tus tareas principales son:
-1. Conectarte y alimentarte de todos los agentes (como el SDR) y de los perfiles de la empresa.
-2. Aprender constantemente del ecosistema y de los datos de los leads.
-3. Monitorear el comportamiento de otros agentes.
-4. Mostrar información y tips estratégicos en tiempo real al cliente B2B ({company_name}).
-5. Proteger la plataforma mediante técnicas avanzadas de ciberseguridad.
+1. Conectarte y alimentarte de todos los agentes (especialmente del Agente SDR / Sales Copilot 360) y monitorear activamente las conversaciones reales de los prospectos (leads).
+2. AUDITAR LAS CONVERSACIONES DE LOS LEADS vs. LA INGESTA ACTUAL DE LA EMPRESA (Configuración de Datos: Nicho, Oferta de Valor, Servicios, Base de Conocimiento/Documentos, Reglas Comerciales y Horarios).
+3. SI DETECTAS CUALQUIER OPORTUNIDAD DE MEJORA, BRECHA DE CONOCIMIENTO, DUDA RECURRENTE O AMBIGÜEDAD EN LAS CONVERSACIONES DE LOS LEADS, DEBES ACONSEJAR PROACTIVAMENTE AL CLIENTE B2B ({company_name}) CÓMO MEJORAR LA INGESTA DEL SDR:
+   - Si los leads preguntan si los servicios son virtuales/online o presenciales, y la oferta no lo especifica con claridad: Aconseja aclarar en la Oferta de Valor o Nicho la modalidad exacta de entrega (ej: "Modalidad 100% Online / Remoto").
+   - Si los prospectos piden catálogo, precios, brochure, temario o PDFs y la Base de Conocimiento no tiene documentos cargados (Actualmente Documentos: {'VACÍA/SIN DOCUMENTOS' if kb_empty else 'CON DOCUMENTOS'}): Aconseja subir documentos clave en Ingesta > Documentos (Knowledge Base).
+   - Si los prospectos preguntan por formas de pago, garantías, cuotas, plazos o contratos: Aconseja definir reglas comerciales explícitas en el SDR.
+   - Si hay dudas de horarios o agendamiento: Aconseja sincronizar calendario y horarios de atención.
+   - Si hay postulantes de empleo o perfiles sin fit comercial: Aconseja calibrar las preguntas de filtro y descalificación del ICP.
 
-Contexto Actual del Negocio:
+Contexto Actual del Negocio e Ingesta:
 - Empresa Operando: {company_name}
+- Nicho / ICP Actual: {icp}
 - Oferta/Valor Principal: {offer}
+- Catálogo/Servicios: {services}
+- Base de Conocimiento / Documentos Subidos: {'SIN DOCUMENTOS (KnowledgeBase vacía)' if kb_empty else 'Documentos cargados'}
+- Horarios de Atención: {business_hours}
 - Resumen en Tiempo Real de Leads del Agente SDR: {leads_context}
+- Muestra de Conversaciones Reales de Leads: {convs_context}
 
 INSTRUCCIONES DE RESPUESTA:
-- Si el query del usuario es '[AUTO_MONITOR_TICK]', significa que ha habido un cambio en la base de datos de leads. NO hables directamente al usuario como en un chat. Actúa como un daemon en segundo plano y genera un log de AUDITORÍA, ANÁLISIS, o CIBERSEGURIDAD analizando qué cambió y qué significa para el negocio.
-- Si el usuario te escribe cualquier otra cosa (ej. "crea un reporte", "hola", etc.), asiste al usuario directamente con profesionalismo empresarial y tecnológico.
-- Aplica SIEMPRE Humildad Epistémica: no inventes datos. Usa solo los datos proporcionados.
+- Si el query del usuario es '[AUTO_MONITOR_TICK]' o 'Escanear Leads' o similar: Analiza a fondo las conversaciones y la ingesta actual. Si detectas alguna de las brechas anteriores (modalidad online/presencial, falta de catálogo/documentos, reglas de pago, etc.), prioriza emitir un log de OPTIMIZACIÓN DE INGESTA COGNITIVA con consejo directo al cliente B2B.
+- Si el usuario te escribe cualquier otra consulta o comando, asiste profesionalmente analizando las interacciones y aconsejando cómo potenciar el SDR.
+- Aplica SIEMPRE Humildad Epistémica: básate estrictamente en los datos reales.
 
 Responde ÚNICAMENTE con un JSON con el siguiente formato estricto:
 {{
-  "action": "<TÍTULO DE LA ACCIÓN EN MAYÚSCULAS> (ej: AUDITORÍA DE SEGURIDAD, ANÁLISIS DE PIPELINE, TIP COMERCIAL)",
-  "detail": "<El mensaje completo, detallado, profesional e inteligente para el usuario B2B basado estrictamente en el contexto. Máximo 3 oraciones.>",
-  "suggestion": "<Una sugerencia accionable o consejo técnico-comercial para la empresa B2B>",
-  "color": "<código hex de color: #10b981 (éxito/positivo), #f59e0b (alerta/warning), #666cff (tecnológico/info), #ef4444 (error/amenaza)>"
+  "action": "<TÍTULO DE LA ACCIÓN EN MAYÚSCULAS> (ej: OPTIMIZACIÓN DE INGESTA: MODALIDAD ONLINE, AUDITORÍA DE DOCUMENTACIÓN, REGLAS DE NEGOCIO)",
+  "detail": "<Explicación de qué se detectó en las conversaciones de los leads y por qué requiere ajuste en la ingesta. Máximo 3 oraciones.>",
+  "suggestion": "<Consejo específico, concreto y accionable para que el cliente B2B mejore la configuración/ingesta del SDR.>",
+  "color": "<#00fbff (ingesta/optimización), #10b981 (éxito/positivo), #f59e0b (alerta/revisión), #666cff (info)>",
+  "category": "<INGESTA_MODALIDAD | INGESTA_DOCUMENTOS | INGESTA_REGLAS | INGESTA_HORARIOS | INGESTA_ICP | PIPELINE | SEGURIDAD>",
+  "findings": ["<Hallazgo puntual 1 en conversaciones>", "<Hallazgo puntual 2>"],
+  "recommended_action": "<Acción corta recomendada, ej: 'Aclarar Modalidad en Oferta de Valor' o 'Subir Catálogo a Ingesta'>",
+  "target_tab": 7
 }}"""
 
     messages = [
@@ -813,10 +837,14 @@ Responde ÚNICAMENTE con un JSON con el siguiente formato estricto:
         response = llm.invoke(messages)
         data = json.loads(response.content)
         return NexusChatResponse(
-            action=data.get("action", "COMANDO PROCESADO"),
-            detail=data.get("detail", "Análisis completado."),
-            suggestion=data.get("suggestion", "N/A"),
-            color=data.get("color", "#666cff")
+            action=data.get("action", "AUDITORÍA COGNITIVA COMPLETADA"),
+            detail=data.get("detail", "Análisis de conversaciones e ingesta completado."),
+            suggestion=data.get("suggestion", "Revisar configuración de datos en el agente SDR."),
+            color=data.get("color", "#00fbff"),
+            category=data.get("category", "INGESTA"),
+            findings=data.get("findings", []),
+            recommended_action=data.get("recommended_action", "Optimizar Ingesta de Datos"),
+            target_tab=data.get("target_tab", 7)
         )
     except Exception as e:
         logger.error(f"Error en nexus-chat: {e}")
@@ -824,7 +852,11 @@ Responde ÚNICAMENTE con un JSON con el siguiente formato estricto:
             action="ERROR COGNITIVO",
             detail=f"Fallo en la inferencia del orquestador: {str(e)}",
             suggestion="Revisar logs del sistema.",
-            color="#ef4444"
+            color="#ef4444",
+            category="ERROR",
+            findings=[],
+            recommended_action=None,
+            target_tab=7
         )
 
 @app.post("/validate-config", response_model=ValidateConfigResponse)
