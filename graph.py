@@ -136,31 +136,37 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
         gemini_llm = gemini_llm.bind_tools(active_tools)
 
     try:
-        # 1. Primera pasada: Gemini decide si usar herramientas
-        sdr_response = gemini_llm.invoke(sdr_messages)
-        
-        # Ejecutar tools si Gemini las invocó
-        if active_tools and hasattr(sdr_response, "tool_calls") and sdr_response.tool_calls:
-            logger.info(f"🔧 Gemini invocó tools: {sdr_response.tool_calls}")
-            sdr_messages.append(sdr_response) # Añadimos el mensaje de la IA con la llamada
+        # ── PATRÓN NIVEL A: Bounded ReAct (Máximo 2 Pasos de Razonamiento + Acción) ──
+        MAX_REACT_STEPS = 2
+        step = 0
+        executed_any_tool = False
+
+        while step < MAX_REACT_STEPS and active_tools:
+            sdr_response = gemini_llm.invoke(sdr_messages)
             
-            tool_map = {t.name: t for t in active_tools}
-            for tool_call in sdr_response.tool_calls:
-                tool_instance = tool_map.get(tool_call["name"])
-                if tool_instance:
-                    tool_output = tool_instance.invoke(tool_call["args"])
-                    from langchain_core.messages import ToolMessage
-                    sdr_messages.append(ToolMessage(
-                        name=tool_call["name"],
-                        tool_call_id=tool_call["id"],
-                        content=str(tool_output)
-                    ))
-                    
-            # Segunda llamada: Hermes genera la respuesta final con el resultado de las tools
-            sdr_response = hermes_llm.invoke(sdr_messages)
-        else:
-            # Si Gemini NO invocó tools, usamos a Hermes para responder
-            sdr_response = hermes_llm.invoke(sdr_messages)
+            if hasattr(sdr_response, "tool_calls") and sdr_response.tool_calls:
+                logger.info(f"🔧 [ReAct Acotado - Paso {step + 1}/{MAX_REACT_STEPS}] Gemini invocó tools: {sdr_response.tool_calls}")
+                sdr_messages.append(sdr_response)
+                executed_any_tool = True
+                
+                tool_map = {t.name: t for t in active_tools}
+                for tool_call in sdr_response.tool_calls:
+                    tool_instance = tool_map.get(tool_call["name"])
+                    if tool_instance:
+                        tool_output = tool_instance.invoke(tool_call["args"])
+                        from langchain_core.messages import ToolMessage
+                        sdr_messages.append(ToolMessage(
+                            name=tool_call["name"],
+                            tool_call_id=tool_call["id"],
+                            content=str(tool_output)
+                        ))
+                step += 1
+            else:
+                # El modelo no necesita más tools, salimos del bucle ReAct
+                break
+
+        # Si hubo tools ejecutadas o no se ejecutaron, Hermes genera la respuesta final fluida
+        sdr_response = hermes_llm.invoke(sdr_messages)
 
         # --- Nodepath Integration ---
         content = sdr_response.content
@@ -187,6 +193,66 @@ def generate_reply_node(state: AgentState) -> Dict[str, Any]:
 
     return {"messages": [sdr_response]}
 
+def reflection_guardrail_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Nodo de Reflexión Ligera (Guardrail de Humildad Epistémica y Anti-Alucinación):
+    Audita la respuesta del SDR antes de emitirla para garantizar:
+    1. Humildad Epistémica: No inventar datos técnicos, legales o precios ausentes en la ingesta.
+    2. Anti-Alucinación: Respetar la oferta de valor y base de conocimiento real de la empresa.
+    """
+    if state.get("lead_status") in ["HANDOFF"]:
+        return {}
+
+    messages = state.get("messages", [])
+    if not messages:
+        return {}
+
+    last_message = messages[-1]
+    if not isinstance(last_message, AIMessage) or not last_message.content or not str(last_message.content).strip():
+        return {}
+
+    draft_reply = str(last_message.content).strip()
+    company_config = state.get("company_config", {})
+
+    # Pasar de largo si es muy breve o mensaje de error genérico
+    if len(draft_reply) < 25 or "presentando fallas técnicas" in draft_reply:
+        return {}
+
+    offer = company_config.get("value_offer", company_config.get("ValueOffer", "N/A"))
+    services = company_config.get("services", company_config.get("Services", "N/A"))
+    kb = company_config.get("knowledge_base", company_config.get("KnowledgeBase", ""))
+
+    guardrail_prompt = f"""Eres el Guardrail de Reflexión y Humildad Epistémica de Sales Copilot 360.
+Tu objetivo es auditar la respuesta generada por el SDR para un prospecto en WhatsApp.
+
+DATOS CONOCIDOS DE LA EMPRESA:
+- Oferta de Valor: {offer}
+- Catálogo / Servicios: {services}
+- Base de Conocimiento / Documentos: {kb[:1200] if kb else 'Sin documentos adicionales'}
+
+RESPUESTA DEL SDR A AUDITAR:
+"{draft_reply}"
+
+REGLAS DE REFLEXIÓN:
+1. Si la respuesta contiene afirmaciones inventadas sobre precios, garantías absolutas o servicios no contemplados en los datos conocidos, CORRÍGELA aplicando HUMILDAD EPISTÉMICA: admite con transparencia lo que se sabe y ofrece amablemente coordinar con un especialista humano del equipo comercial.
+2. Si la respuesta es verídica, segura y no alucina, responde ÚNICAMENTE con la palabra: PASS
+3. Si requiere corrección, responde ÚNICAMENTE con el texto corregido para WhatsApp."""
+
+    try:
+        gemini = get_gemini_llm()
+        audit_res = gemini.invoke([SystemMessage(content=guardrail_prompt)])
+        audit_text = str(audit_res.content).strip()
+
+        if audit_text and not audit_text.startswith("PASS") and len(audit_text) > 10:
+            logger.info("🛡️ [Reflection Guardrail] Respuesta corregida con Humildad Epistémica.")
+            last_message.content = audit_text
+        else:
+            logger.info("🛡️ [Reflection Guardrail] Respuesta auditada y verificada: PASS")
+    except Exception as e:
+        logger.warning(f"Error en Reflection Guardrail (manteniendo borrador): {e}")
+
+    return {"messages": [last_message]}
+
 def classify_lead_node(state: AgentState) -> Dict[str, Any]:
     """
     Nodo que lee la conversación (incluyendo la respuesta generada) y evalúa el perfil BANT.
@@ -194,7 +260,7 @@ def classify_lead_node(state: AgentState) -> Dict[str, Any]:
     logger.info("⚡ [Nodo: classify_lead] - Clasificando BANT...")
     
     company_config = state["company_config"]
-    # state["messages"] ahora contiene la respuesta generada por generate_reply_node
+    # state["messages"] ahora contiene la respuesta generada por generate_reply_node y auditada por reflection_guardrail
     full_history = state["messages"] 
 
     classifier_messages = [SystemMessage(content=build_classifier_prompt(company_config))] + full_history + [
@@ -223,15 +289,17 @@ def build_sdr_graph() -> StateGraph:
     # 1. Instanciar grafo con el tipo de Estado
     workflow = StateGraph(AgentState)
 
-    # 2. Añadir nodos
+    # 2. Añadir nodos del Grafo Cognitivo (Apollo -> Bounded ReAct -> Reflection Guardrail -> BANT Classifier)
     workflow.add_node("apollo_enrichment", apollo_enrichment_node)
     workflow.add_node("generate_reply", generate_reply_node)
+    workflow.add_node("reflection_guardrail", reflection_guardrail_node)
     workflow.add_node("classify_lead", classify_lead_node)
 
     # 3. Definir flujo secuencial
     workflow.add_edge(START, "apollo_enrichment")
     workflow.add_edge("apollo_enrichment", "generate_reply")
-    workflow.add_edge("generate_reply", "classify_lead")
+    workflow.add_edge("generate_reply", "reflection_guardrail")
+    workflow.add_edge("reflection_guardrail", "classify_lead")
     workflow.add_edge("classify_lead", END)
 
     # 4. Compilar
