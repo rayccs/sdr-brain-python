@@ -245,6 +245,8 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
         custom_prompt = company_config.get("prompt", company_config.get("Prompt", ""))
         agent_name = company_config.get("agent_name", company_config.get("AgentName", "Alex"))
         knowledge_base = company_config.get("knowledge_base", company_config.get("KnowledgeBase", ""))
+        fallback_enabled = bool(company_config.get("fallback_message_enabled", company_config.get("FallbackMessageEnabled", False)))
+        fallback_message = str(company_config.get("fallback_message", company_config.get("FallbackMessage", ""))).strip()
     else:
         company_name = "nuestra empresa"
         icp = "empresas B2B medianas y grandes"
@@ -253,6 +255,8 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
         custom_prompt = ""
         agent_name = "Alex"
         knowledge_base = ""
+        fallback_enabled = False
+        fallback_message = ""
         
     kb_section = ""
     resources_section = ""
@@ -332,6 +336,17 @@ Google Calendar NO está disponible en este plan. NO tienes herramientas de agen
     else:
         catalog_instruction = "\n5. **Carencia de Catálogos (HUMILDAD EPISTÉMICA):** NO tienes catálogos, brochures, links de casas, ni listas de precios pre-armadas en tus recursos. Si el cliente te pide un catálogo, brochure o link, RESPONDERÁS QUE NO TIENES ESA INFORMACIÓN y ofrecerás agendar una llamada o transferirlo con un ejecutivo. ESTRICTAMENTE PROHIBIDO inventar links o decir '[Link al catálogo]'."
 
+    if fallback_enabled and fallback_message:
+        fallback_rule = f"""- **RESPUESTA PREDETERMINADA ANTE CONSULTAS NO MAPEADAS O DESCONOCIDAS (CONFIGURADA POR LA EMPRESA - OBLIGATORIA):**
+  La empresa ha configurado un protocolo de respuesta predeterminado obligatorio:
+  "{fallback_message}"
+  REGLA DE ACCIÓN ESTRICTA: Si el prospecto te pregunta un dato técnico, precio, cobertura, política, condición comercial o cualquier consulta que NO esté contemplada en tu Base de Conocimiento ni en tus documentos oficiales, o que no tengas mapeada:
+  1. DEBES responder transmitiendo este mensaje predeterminado configurado por la empresa.
+  2. NUNCA inventes información ni alucines datos.
+  3. Reconoce con cortesía y formalidad que ese requerimiento puntual será canalizado con un especialista."""
+    else:
+        fallback_rule = """- **HUMILDAD EPISTÉMICA ESTRICTA Y CERO ALUCINACIÓN:** Basa tus respuestas ÚNICAMENTE en la información cargada en tu Base de Conocimiento y Recursos. NUNCA inventes precios, disponibilidad, requisitos, stock, cobertura o condiciones que no aparezcan en tus documentos. Si un prospecto pregunta un dato específico que NO tienes en tus documentos, responde con honestidad que no cuentas con ese detalle en el sistema y que transferirás la consulta a un ejecutivo comercial para que se comunique y le informe a detalle."""
+
     base_prompt = f"""Eres {agent_name}, un asesor experto, claro, directo y profesional que representa a "{company_name}". 
 IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido). Usa RAG estrictamente basado en tu Base de Conocimiento.
 
@@ -347,7 +362,7 @@ IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un
 - Tu rol comercial está enfocado en prospectar, contactar, interactuar inteligentemente, calificar leads (metodología BANT) y avanzar hacia el cierre de la venta, siempre adaptándote al Nicho de tu empresa ({icp}).
 - Eres un profesional. NO eres un bot para jugar ni discutir. Si el cliente envía solicitudes absurdas (ej. buscar propiedades en la luna, bromas), NO SIGAS EL JUEGO ni aceptes solicitudes que no correspondan a tu nicho. Descarta la petición cortésmente y reconduce la conversación inmediatamente a tu Propuesta de Valor, o despídete si el cliente persiste.
 - **IDENTIDAD DE VENTA:** {company_name} es VENDEDOR de {offer} y {services}. Ustedes NO COMPRAN PRODUCTOS. Si el cliente quiere venderte algo, aclara amablemente tu rol. Si insiste, considéralo DESCALIFICADO.
-- **HUMILDAD EPISTÉMICA ESTRICTA Y CERO ALUCINACIÓN:** Basa tus respuestas ÚNICAMENTE en la información cargada en tu Base de Conocimiento y Recursos. NUNCA inventes precios, disponibilidad, requisitos, stock, cobertura o condiciones que no aparezcan en tus documentos. Si un prospecto pregunta un dato específico que NO tienes en tus documentos, responde con honestidad que no cuentas con ese detalle en el sistema y que transferirás la consulta a un ejecutivo comercial para que se comunique y le informe a detalle.
+{fallback_rule}
 - Conoces a profundidad todo lo que la empresa "{company_name}" conoce y hace a través de su Base de Conocimiento.{kb_section}{resources_section}{apollo_section}{calendar_section}
 
 ## Directrices de Prospección & Calificación por WhatsApp
