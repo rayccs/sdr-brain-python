@@ -37,7 +37,17 @@ def get_niche_preset(icp: str) -> Dict[str, Any]:
             "handoff_rule": "Si es una emergencia médica, DERIVA INMEDIATAMENTE. Si es para un control o consulta de rutina, ofrece coordinar la atención con el equipo de admisión."
         }
 
-    # 4. Servicios TI / Consultoría / General
+    # 4. Asesoría, Orientación y Planificación Previsional (Chile - DL 3.500)
+    if any(k in icp_lower for k in ["previsional", "jubilaci", "pensi", "afp", "apv", "renta vitalicia", "scomp", "superintendencia de pensiones"]):
+        return {
+            "temperature": 0.3,
+            "max_tokens": 420,
+            "tone": "Altamente empático, confiable, respetuoso y técnico-financiero. Eres un asesor previsional experto en la normativa chilena (Decreto Ley 3.500, compendios de la Superintendencia de Pensiones y CMF). Tratas el futuro económico y el patrimonio de las personas con total rigurosidad y transparencia.",
+            "length_rule": "MÁXIMO 3 a 5 líneas por mensaje. Claro, directo, empático y sin jerga técnica que confunda al afiliado.",
+            "handoff_rule": "Identifica la situación del afiliado (edad aproximada, si es hombre o mujer, si está activo o cesante, y si busca jubilarse por edad legal, anticipada o planificar con APV). Prioriza SIEMPRE ofrecer coordinar una reunión o videollamada personalizada de asesoría previsional para analizar su caso, revisar su Certificado de Saldo y cotizar en el Sistema SCOMP. NUNCA prometas montos exactos de pensión sin una simulación formal de SCOMP."
+        }
+
+    # 5. Servicios TI / Consultoría / General
     return {
         "temperature": 0.4,
         "max_tokens": 512,
