@@ -287,15 +287,26 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
     auto_schedule = company_config.get("auto_schedule_enabled", False)
     access_token = company_config.get("google_access_token", "")
     business_hours = company_config.get("business_hours", "Lunes a Viernes, 09:00 - 18:00")
+    
+    # Detección inteligente de soporte de calendario según el nicho
+    is_calendar_supported = not any(k in (icp or "").lower() for k in ["e-commerce", "delivery", "courier", "supply chain", "despacho de productos"])
+    
     calendar_section = ""
-    if auto_schedule and access_token:
+    if not is_calendar_supported:
         calendar_section = f"""
 
-## AGENDAMIENTO AUTÓNOMO (Google Calendar) — OBLIGATORIO
-TIENES herramientas (tools) de calendario. Tu comportamiento OBLIGATORIO es:
+## ATENCIÓN COMERCIAL Y GESTIÓN DE CONSULTAS (NICHO DE VENTA DIRECTA / E-COMMERCE / CATÁLOGO)
+Tu modelo de negocio opera mediante venta por catálogo, cotización directa, pedidos y despachos. NO ofrezcas reuniones, citas ni llamadas por Google Calendar.
+- Atiende consultas de productos, stock, precios, especificaciones técnicas y despachos dentro de tu Horario de Atención de la Empresa: {business_hours}.
+- Si el cliente insiste en hablar con una persona para compras mayoristas, reclamos o atención personalizada, transfiere cortésmente al ejecutivo comercial humano."""
+    elif auto_schedule and access_token:
+        calendar_section = f"""
+
+## AGENDAMIENTO AUTÓNOMO (Google Calendar & Google Meet) — OBLIGATORIO
+TIENES herramientas (tools) de calendario activas. Tu comportamiento OBLIGATORIO es:
 
 REGLA ABSOLUTA: Cuando el cliente dice "sí", "quiero agendar", "dale", "por favor", 
-"confirmo" o cualquier variante afirmativa a una propuesta de reunión, 
+"confirmo" o cualquier variante afirmativa a una propuesta de reunión o videollamada, 
 DEBES EJECUTAR la tool `check_availability` con la fecha de MAÑANA (o la fecha 
 que el cliente sugiera). NO respondas con texto sugiriendo agendar sin usar la tool.
 
@@ -305,30 +316,28 @@ Solo puedes ofrecer horarios que estén DENTRO de este horario de atención.
 FLUJO IMPERATIVO:
 1. Cliente muestra interés → USA `check_availability` inmediatamente.
 2. Con el resultado, ofrece 2 opciones libres dentro del horario de atención.
-3. Cliente confirma horario → USA `book_appointment`.
-4. Si no tienes email del cliente, pídelo ANTES de agendar.
-5. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL.
+3. Cliente confirma horario → Solicita su correo electrónico si aún no lo tienes.
+4. Con el correo y el horario confirmado → USA `book_appointment`. Esto enviará una invitación formal por correo con enlace de Google Meet.
+5. Confirma al cliente que la cita quedó reservada y que la invitación con Google Meet ha sido enviada a su correo.
+6. PROHIBIDO: Responder "¿Te gustaría agendar?" si el cliente ya dijo que sí. EJECUTA LA TOOL.
 
 ### ⚠️ REGLAS DE SEGURIDAD Y ANTI-ALUCINACIÓN (CRÍTICAS):
 - **NUNCA inventes horarios.** Solo usa los horarios que devuelva la tool `check_availability`.
 - **NUNCA ofrezas ir a la oficina** si no está explícitamente definido en tu Base de Conocimiento.
-- **NUNCA envíes correos electrónicos** por tu cuenta. Si necesitas que el cliente reciba una invitación, di que un ejecutivo se encargará de eso.
 - **SI LA TOOL FALLA** (token expirado, error 401, error técnico, o no hay disponibilidad real):
-  → **INMEDIATAMENTE** di: "Tuvimos un inconveniente técnico para agendar. Un ejecutivo de nuestra empresa se pondrá en contacto contigo para coordinar tu reunión personalmente. ¿Te parece bien?"
-  → **NUNCA** digas "te enviaré un correo", "intentaré de nuevo", o "vamos a nuestra oficina". 
-  → **NUNCA** repitas disculpas o intentes agendar de nuevo. Deriva al ejecutivo."""
+  → **INMEDIATAMENTE** di: "Tuvimos un inconveniente técnico para agendar automáticamente. Un ejecutivo de nuestra empresa se pondrá en contacto contigo para coordinar tu reunión personalmente. ¿Te parece bien?"
+  → **NUNCA** digas "intentaré de nuevo", "te enviaré un correo manual" o inventes links. Deriva al ejecutivo."""
     else:
         calendar_section = f"""
 
-## AGENDAMIENTO COMERCIAL (PLAN ESTÁNDAR — SIN GOOGLE CALENDAR) — OBLIGATORIO
-Google Calendar NO está disponible en este plan. NO tienes herramientas de agendamiento automático ni debes ofrecerlo.
-- **PROHIBIDO:** Decir "te enviaré un correo", "te agendaré en Google Calendar", o "te generé un link de Google Meet".
-- **PROHIBIDO:** Prometer enlaces o confirmaciones directas de calendario.
-- **FLUJO CORRECTO:** Cuando el prospecto muestre interés en una reunión o llamada:
-  1. Pregúntale qué día y hora le acomoda dentro del horario de atención de la empresa ({business_hours}).
-  2. Confirma o solicita su nombre y correo corporativo/teléfono para el registro.
-  3. Indícale que un **ejecutivo comercial de nuestra empresa** se pondrá en contacto de inmediato para coordinar los accesos y confirmar la reunión.
-"""
+## AGENDAMIENTO Y REUNIONES (AGENDAMIENTO AUTÓNOMO DESACTIVADO — DERIVACIÓN HUMANA INMEDIATA)
+El agendamiento automático por Google Calendar está DESACTIVADO por la empresa en este momento.
+- **PROHIBIDO:** Intentar agendar citas, pedir fechas tentativas o prometer horarios por tu cuenta.
+- **REGLA DE ACCIÓN OBLIGATORIA:** Cuando el prospecto califique (metodología BANT) o manifieste interés en agendar una reunión, cita o llamada comercial:
+  1. Agradécele con entusiasmo y formalidad.
+  2. Indícale que transferirás su solicitud de inmediato a un **ejecutivo comercial de nuestra empresa** para que se comunique con él personalmente y coordine la fecha y hora que mejor le acomode.
+  3. Confirma o solicita de forma cordial su nombre completo y correo electrónico o teléfono para registrar la derivación.
+- Los contactos y seguimientos se canalizan dentro del Horario de Atención de la Empresa: {business_hours}."""
 
     catalog_instruction = ""
     if resources_section and resources_section.strip():

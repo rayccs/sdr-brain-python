@@ -104,13 +104,19 @@ def book_calendar_appointment(access_token: str, refresh_token: str, start_time:
             },
             "end": {
                 "dateTime": end_time,
+            },
+            "conferenceData": {
+                "createRequest": {
+                    "requestId": f"meet-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"}
+                }
             }
         }
         
         if attendee_email:
             event["attendees"] = [{"email": attendee_email}]
             
-        params = {"sendUpdates": "all"}
+        params = {"sendUpdates": "all", "conferenceDataVersion": 1}
         resp = requests.post(url, headers=headers, params=params, json=event)
         
         if resp.status_code == 401 and refresh_token:
@@ -125,7 +131,11 @@ def book_calendar_appointment(access_token: str, refresh_token: str, start_time:
         if resp.status_code in [200, 201]:
             data = resp.json()
             link = data.get("htmlLink", "")
-            return f"Reunión agendada exitosamente. Link al evento: {link}"
+            meet_link = data.get("hangoutLink", "")
+            msg = f"Reunión agendada exitosamente en Google Calendar. Se envió la invitación por correo formal con enlace de Google Meet a {attendee_email or 'el lead'}."
+            if meet_link:
+                msg += f" Enlace de Google Meet: {meet_link}"
+            return msg
             
         return f"Fallo al agendar la reunión: {resp.text}"
         
