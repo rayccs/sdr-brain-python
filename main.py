@@ -244,6 +244,7 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
         services = company_config.get("services", company_config.get("Services", ""))
         custom_prompt = company_config.get("prompt", company_config.get("Prompt", ""))
         agent_name = company_config.get("agent_name", company_config.get("AgentName", "Alex"))
+        country = company_config.get("country", company_config.get("Country", "Chile"))
         knowledge_base = company_config.get("knowledge_base", company_config.get("KnowledgeBase", ""))
         fallback_enabled = bool(company_config.get("fallback_message_enabled", company_config.get("FallbackMessageEnabled", False)))
         fallback_message = str(company_config.get("fallback_message", company_config.get("FallbackMessage", ""))).strip()
@@ -254,6 +255,7 @@ def build_system_prompt(company_config: Optional[dict], user_query: str = "", le
         services = "Agentes IA, automatizaciones de ventas, CRM inteligente"
         custom_prompt = ""
         agent_name = "Alex"
+        country = "Chile"
         knowledge_base = ""
         fallback_enabled = False
         fallback_message = ""
@@ -384,15 +386,27 @@ Operas con estricto apego al marco legal previsional de Chile (Decreto Ley 3.500
    - Detectar la situación del cliente: ¿Está próximo a la edad legal? ¿Busca jubilarse anticipadamente? ¿Busca optimizar impuestos mediante APV? ¿Desea evaluar si le conviene Retiro Programado o Renta Vitalicia?
    - Agendar una sesión de orientación previsional personalizada para revisar su Certificado de Saldo y proyectar sus alternativas."""
 
+    country_section = ""
+    country_clean = (country or "Chile").strip().lower()
+    if "venezuela" in country_clean:
+        country_section = "\n- **Contexto de Negocio (Venezuela):** El negocio opera en Venezuela. Las cotizaciones comerciales y transacciones se manejan habitualmente en Dólares Estadounidenses (USD) o Bolívares (VES al cambio oficial BCV). Zona horaria legal UTC-4 (America/Caracas). Estilo de comunicación profesional, cordial y directo."
+    elif "chile" in country_clean:
+        country_section = "\n- **Contexto de Negocio (Chile):** El negocio opera en Chile. Las transacciones comerciales B2B se manejan en Pesos Chilenos (CLP) o Unidades de Fomento (UF). Facturación formal con RUT. Zona horaria legal UTC-3 (America/Santiago). Trato corporativo formal, cercano y educado."
+    elif any(k in country_clean for k in ["estados unidos", "usa", "united states", "eeuu"]):
+        country_section = "\n- **Contexto de Negocio (Estados Unidos):** El negocio opera en Estados Unidos. Las transacciones se realizan exclusivamente en USD ($). Horarios comerciales en franja horaria correspondiente (EST / PST). Comunicación altamente ejecutiva, orientada a valor comercial, métricas y eficiencia de tiempo."
+    else:
+        country_section = f"\n- **Contexto de Negocio:** El negocio opera en {country}. Adapta la moneda, modismos y trato profesional a las normas locales de este país."
+
     base_prompt = f"""Eres {agent_name}, un asesor experto, claro, directo y profesional que representa a "{company_name}". 
 IMPORTANTE: Nunca menciones que eres una IA o un bot. Comórtate siempre como un humano natural, aplicando los principios de Humildad Epistémica (reconoce cordialmente si no sabes algo en lugar de inventarlo o alucinar) y Entropía Negativa (aporta siempre estructura, claridad y valor a la conversación del cliente en lugar de generar ruido). Usa RAG estrictamente basado en tu Base de Conocimiento.
 
 ## Conocimiento de Negocio del Cerebro de Ventas ({company_name})
+- **País donde opera el negocio:** {country}
 - **Cliente Ideal y Nicho (ICP):** {icp}
 - **Propuesta de Valor:** {offer}
 - **Servicios / Productos:** {services or 'Consultar según contexto'}
 - **Horario de Atención de la Empresa:** {business_hours}
-- **Parámetros Estratégicos del Negocio:** {custom_prompt or 'N/A'}
+- **Parámetros Estratégicos del Negocio:** {custom_prompt or 'N/A'}{country_section}
 
 ## Tu Rol y Propuesta de Valor Comercial B2B
 - **FECHA Y HORA ACTUAL DEL SISTEMA:** {datetime.now().strftime("%Y-%m-%d %H:%M")}.
